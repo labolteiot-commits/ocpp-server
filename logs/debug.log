@@ -1,0 +1,9 @@
+[2m2026-04-09T17:49:05.460529Z[0m [[32m[1minfo     [0m] [1mDémarrage                     [0m [36mapi_port[0m=[35m8000[0m [36mapp[0m=[35mMon Serveur OCPP[0m [36menv[0m=[35mproduction[0m [36mocpp_port[0m=[35m9000[0m
+[2m2026-04-09T17:49:05.497636Z[0m [[32m[1minfo     [0m] [1mBase de données initialisée   [0m
+[2m2026-04-09T17:49:05.606881Z[0m [[32m[1minfo     [0m] [1mDémarrage OCPP WebSocket      [0m [36mhost[0m=[35m0.0.0.0[0m [36mport[0m=[35m9000[0m
+server listening on 0.0.0.0:9000
+[2m2026-04-09T17:49:05.641087Z[0m [[32m[1minfo     [0m] [1mServeur OCPP prêt             [0m [36murl[0m=[35mws://0.0.0.0:9000/ocpp/[ID_BORNE][0m
+connection open
+[2m2026-04-09T17:49:10.714202Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 63876)[0m [36mprotocol[0m=[35mocpp1.6[0m
+BORNE-GARAGE-01: receive message [2,"1000036","Heartbeat",{}]
+BORNE-GARAGE-01: send [3,"1000036",{"currentTime":"2026-04-09T17:49:12.524812+00:00"}]

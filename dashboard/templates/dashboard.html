@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OCPP Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+    header{background:#1e293b;padding:.875rem 1.5rem;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #334155;gap:.75rem;flex-wrap:wrap;position:sticky;top:0;z-index:50}
+    header h1{font-size:1.1rem;font-weight:700;color:#38bdf8}
+    .header-right{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+    main{padding:1.5rem;max-width:1600px;margin:0 auto}
+    .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.75rem;margin-bottom:1.5rem}
+    .stat-card{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:1rem;text-align:center}
+    .stat-card .val{font-size:1.75rem;font-weight:700;color:#38bdf8}
+    .stat-card .lbl{font-size:.75rem;color:#94a3b8;margin-top:3px}
+    .section-title{font-size:.8rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.75rem}
+    .chart-card{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:1.25rem;margin-bottom:1.5rem}
+    .chart-card canvas{max-height:200px}
+    .chargers-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:1rem;margin-bottom:1.5rem}
+    .charger-card{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:1.25rem;transition:border-color .25s}
+    .charger-card.connected{border-color:#1d4ed8}
+    .ch-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.625rem}
+    .ch-id{font-weight:700;font-size:.95rem;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+    .ch-meta{font-size:.72rem;color:#94a3b8;margin-top:2px}
+    .ch-ip{font-size:.68rem;color:#475569;margin-top:1px;font-family:monospace}
+    .ch-cfg{font-size:.68rem;color:#64748b;margin-top:2px}
+    .badge{font-size:.7rem;font-weight:600;padding:2px 9px;border-radius:999px;white-space:nowrap}
+    .b-available{background:#166534;color:#86efac}
+    .b-charging{background:#1e3a8a;color:#93c5fd}
+    .b-faulted{background:#7f1d1d;color:#fca5a5}
+    .b-offline{background:#374151;color:#9ca3af}
+    .b-preparing{background:#78350f;color:#fcd34d}
+    .b-unavailable{background:#374151;color:#9ca3af}
+    .b-finishing{background:#4c1d95;color:#c4b5fd}
+    .b-reserved{background:#1e3a5f;color:#7dd3fc}
+    .b-suspendedev,.b-suspendedevse{background:#374151;color:#9ca3af}
+    .conn-bar{display:flex;align-items:center;gap:6px;font-size:.72rem;margin-bottom:.625rem;padding:4px 8px;border-radius:6px}
+    .conn-bar.on{background:#052e16;color:#86efac}
+    .conn-bar.off{background:#1c0a0a;color:#fca5a5}
+    .conn-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+    .conn-dot.on{background:#86efac}
+    .conn-dot.off{background:#fca5a5}
+    .metrics-grid{display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:.625rem}
+    .metric-box{background:#0f172a;border-radius:8px;padding:.625rem;text-align:center;transition:border .2s}
+    .metric-box.power-cut{border:1px solid #7f1d1d}
+    .metric-lbl{font-size:.62rem;color:#64748b;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px}
+    .metric-val{font-size:1.05rem;font-weight:700}
+    .metric-sub{font-size:.68rem;color:#64748b;margin-top:1px}
+    .connectors{display:flex;gap:.375rem;flex-wrap:wrap;margin-bottom:.625rem}
+    .connector{background:#0f172a;border:1px solid #334155;border-radius:7px;padding:.4rem .625rem;font-size:.75rem;min-width:90px}
+    .connector .cl{font-size:.65rem;color:#64748b}
+    .connector .cv{font-weight:600;margin-top:1px}
+    .total-badge{font-size:.72rem;color:#94a3b8;padding:3px 8px;background:#0f172a;border-radius:5px;display:inline-block;margin-bottom:.5rem}
+    .hb-time{font-size:.68rem;color:#475569;margin-bottom:.75rem}
+    .tx-info{font-size:.68rem;color:#64748b;margin-bottom:.5rem;padding:3px 8px;background:#0f172a;border-radius:5px;display:inline-block}
+    .tx-info.active{color:#93c5fd;background:#1e3a8a22;border:1px solid #1e3a8a}
+    .actions{display:flex;gap:.375rem;flex-wrap:wrap;margin-bottom:.375rem}
+    .actions-row2{display:flex;gap:.375rem;flex-wrap:wrap}
+    .btn{padding:5px 12px;border-radius:7px;border:none;font-size:.78rem;font-weight:600;cursor:pointer;transition:opacity .15s,transform .1s}
+    .btn:hover:not(:disabled){opacity:.82}
+    .btn:active:not(:disabled){transform:scale(.97)}
+    .btn:disabled{opacity:.3;cursor:not-allowed}
+    .btn-start{background:#0284c7;color:#fff}
+    .btn-stop{background:#dc2626;color:#fff}
+    .btn-cut{background:#7f1d1d;color:#fca5a5}
+    .btn-restore{background:#166534;color:#86efac}
+    .btn-reset{background:#4b5563;color:#fff}
+    .btn-avail{background:#065f46;color:#6ee7b7}
+    .btn-unavail{background:#7c3aed;color:#ddd6fe}
+    .btn-unlock{background:#92400e;color:#fde68a}
+    .btn-cfg{background:#0f3460;color:#7dd3fc}
+    .btn-edit{background:#1e3a8a;color:#93c5fd}
+    .btn-add{background:#0284c7;color:#fff;font-size:.82rem}
+    .btn-detect{background:#334155;color:#94a3b8}
+    .btn-sm{padding:3px 9px;font-size:.72rem}
+    .btn-cancel{background:#374151;color:#fff}
+    .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200;justify-content:center;align-items:center;padding:1rem}
+    .modal-bg.open{display:flex}
+    .modal{background:#1e293b;border:1px solid #334155;border-radius:14px;padding:1.5rem;width:100%;max-width:500px;max-height:90vh;overflow-y:auto}
+    .modal h3{margin-bottom:1rem;font-size:.95rem;color:#e2e8f0}
+    .form-group{margin-bottom:.75rem}
+    .form-group label{display:block;font-size:.75rem;color:#94a3b8;margin-bottom:3px}
+    .form-group input,.form-group select,.form-group textarea{width:100%;background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:7px 11px;border-radius:7px;font-size:.875rem;outline:none}
+    .form-group input:focus,.form-group select:focus{border-color:#38bdf8}
+    .form-group textarea{resize:vertical;min-height:70px;font-family:monospace;font-size:.8rem}
+    .form-row{display:grid;grid-template-columns:1fr 1fr;gap:.5rem}
+    .input-with-btn{display:flex;gap:.5rem}
+    .input-with-btn input{flex:1}
+    .modal-actions{display:flex;gap:.5rem;justify-content:flex-end;margin-top:1.25rem}
+    .url-preview{margin-top:.625rem;padding:.625rem;background:#0f172a;border-radius:7px;font-size:.75rem;color:#94a3b8;line-height:1.6}
+    .url-preview code{color:#e2e8f0;word-break:break-all;display:block;margin-top:3px}
+    .info-box{padding:.625rem .875rem;border-radius:7px;font-size:.75rem;line-height:1.6;margin-bottom:.75rem}
+    .info-box.warn{background:#78350f22;border:1px solid #78350f55;color:#fcd34d}
+    .info-box.info{background:#0f346022;border:1px solid #1e3a8a;color:#7dd3fc}
+    .info-box.tip{background:#05291622;border:1px solid #166534;color:#86efac}
+    .cfg-table{width:100%;border-collapse:collapse;font-size:.8rem;margin-top:.5rem}
+    .cfg-table th{text-align:left;padding:4px 8px;color:#64748b;font-weight:500;border-bottom:1px solid #334155}
+    .cfg-table td{padding:4px 8px;border-bottom:1px solid #1e293b;vertical-align:middle}
+    .cfg-table tr:hover td{background:#0f172a}
+    .cfg-val{font-family:monospace;color:#38bdf8}
+    .cfg-ro{color:#64748b;font-size:.68rem}
+    .tab-bar{display:flex;gap:.25rem;margin-bottom:.75rem;border-bottom:1px solid #334155}
+    .tab{padding:5px 12px;font-size:.78rem;cursor:pointer;border-radius:7px 7px 0 0;color:#94a3b8;background:transparent;border:none}
+    .tab.active{background:#334155;color:#e2e8f0}
+    .tab-panel{display:none}
+    .tab-panel.active{display:block}
+    .empty-state{text-align:center;padding:3rem 1rem;color:#64748b}
+    .toast{position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;padding:.625rem 1rem;border-radius:9px;font-weight:600;font-size:.82rem;transition:opacity .35s;pointer-events:none}
+    .lock-pill{font-size:.65rem;padding:2px 7px;border-radius:999px;font-weight:600}
+    .lock-on{background:#78350f;color:#fcd34d}
+    .lock-off{background:#166534;color:#86efac}
+    .hint{font-size:.7rem;color:#64748b;margin-top:3px;line-height:1.4}
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>&#9889; OCPP Dashboard</h1>
+  <div class="header-right">
+    <span id="ws-status" class="badge b-offline">&#9679; Déconnecté</span>
+    <button class="btn btn-add" onclick="openModal('add-modal')">+ Ajouter une borne</button>
+  </div>
+</header>
+
+<main>
+
+  <div class="stats-grid">
+    <div class="stat-card"><div class="val" id="s-total">{{ stats.total_chargers }}</div><div class="lbl">Bornes enregistrées</div></div>
+    <div class="stat-card"><div class="val" id="s-conn">{{ connected_chargers|length }}</div><div class="lbl">Connectées</div></div>
+    <div class="stat-card"><div class="val" id="s-active">{{ stats.active_sessions }}</div><div class="lbl">Sessions actives</div></div>
+    <div class="stat-card"><div class="val" id="s-energy">{{ stats.total_energy_kwh }}</div><div class="lbl">kWh livrés</div></div>
+  </div>
+
+  <div class="chart-card">
+    <div class="section-title" style="margin-bottom:.75rem">Puissance temps réel (W)</div>
+    <canvas id="powerChart"></canvas>
+  </div>
+
+  <div class="section-title">Bornes de recharge</div>
+  <div class="chargers-grid" id="chargers-grid">
+    {% for charger in chargers %}
+    {% set connected = charger.id in connected_chargers %}
+    <div class="charger-card {% if connected %}connected{% endif %}" id="card-{{ charger.id }}">
+
+      <div class="ch-header">
+        <div>
+          <div class="ch-id">
+            {{ charger.id }}
+            {% if charger.boot_lock %}
+            <span class="lock-pill lock-on">&#128274; Verrouillage auto</span>
+            {% else %}
+            <span class="lock-pill lock-off">&#128275; Démarrage libre</span>
+            {% endif %}
+          </div>
+          <div class="ch-meta">{{ charger.manufacturer or '—' }} · {{ charger.model or '—' }} · {{ charger.ocpp_protocol }}</div>
+          {% if charger.ip_address %}<div class="ch-ip">{{ charger.ip_address }}</div>{% endif %}
+          <div class="ch-cfg">
+            {% if charger.default_max_amps %}Courant max : {{ charger.default_max_amps | int }} A{% else %}Courant : illimité{% endif %}
+          </div>
+        </div>
+        <span class="badge b-{{ charger.status.value.lower() }}" id="status-{{ charger.id }}">{{ charger.status.value }}</span>
+      </div>
+
+      <div class="conn-bar {% if connected %}on{% else %}off{% endif %}" id="connbar-{{ charger.id }}">
+        <span class="conn-dot {% if connected %}on{% else %}off{% endif %}" id="dot-{{ charger.id }}"></span>
+        <span id="connlbl-{{ charger.id }}">{% if connected %}WebSocket connecté{% else %}Hors ligne — commandes indisponibles{% endif %}</span>
+      </div>
+
+      <div class="metrics-grid">
+        <div class="metric-box" id="powerbox-{{ charger.id }}">
+          <div class="metric-lbl">Puissance</div>
+          <div class="metric-val" id="m-power-{{ charger.id }}" style="color:#38bdf8">— W</div>
+          <div class="metric-sub" id="m-current-{{ charger.id }}"></div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-lbl">Session</div>
+          <div class="metric-val" id="m-session-{{ charger.id }}" style="color:#34d399">— kWh</div>
+          <div class="metric-sub" id="m-voltage-{{ charger.id }}"></div>
+        </div>
+      </div>
+
+      <div class="connectors" id="connectors-{{ charger.id }}">
+        {% for c in charger.connectors if c.connector_id > 0 %}
+        <div class="connector">
+          <div class="cl">Connecteur {{ c.connector_id }}</div>
+          <div class="cv" id="cs-{{ charger.id }}-{{ c.connector_id }}">{{ c.status.value }}</div>
+        </div>
+        {% else %}
+        <div class="connector"><div class="cl">En attente de connexion</div></div>
+        {% endfor %}
+      </div>
+
+      <div class="total-badge" id="total-{{ charger.id }}">Total livré : — kWh</div>
+      <div class="tx-info" id="tx-{{ charger.id }}">Aucune session active</div>
+      <div class="hb-time" id="hb-{{ charger.id }}">
+        Heartbeat : {% if charger.last_heartbeat %}{{ charger.last_heartbeat.strftime('%H:%M:%S') }}{% else %}—{% endif %}
+      </div>
+
+      <!-- Actions principales -->
+      <div class="actions">
+        <button class="btn btn-start"   id="btn-start-{{ charger.id }}"   onclick="openStartModal('{{ charger.id }}')"  {% if not connected %}disabled{% endif %}>&#9654; Démarrer</button>
+        <button class="btn btn-stop"    id="btn-stop-{{ charger.id }}"    onclick="openStopModal('{{ charger.id }}')"   {% if not connected %}disabled{% endif %}>&#9646; Arrêter</button>
+        <button class="btn btn-cut btn-sm"     id="btn-cut-{{ charger.id }}"     onclick="openCutModal('{{ charger.id }}')"      {% if not connected %}disabled{% endif %}>&#9889; Couper charge</button>
+        <button class="btn btn-restore btn-sm" id="btn-restore-{{ charger.id }}" onclick="openRestoreModal('{{ charger.id }}')"  {% if not connected %}disabled{% endif %}>&#9889; Rétablir charge</button>
+      </div>
+
+      <!-- Actions secondaires -->
+      <div class="actions-row2">
+        <button class="btn btn-avail btn-sm"   id="btn-avail-{{ charger.id }}"   onclick="setAvail('{{ charger.id }}',true)"   {% if not connected %}disabled{% endif %}>&#10003; Dispo</button>
+        <button class="btn btn-unavail btn-sm" id="btn-unavail-{{ charger.id }}" onclick="setAvail('{{ charger.id }}',false)"  {% if not connected %}disabled{% endif %}>&#8856; Hors service</button>
+        <button class="btn btn-unlock btn-sm"  id="btn-unlock-{{ charger.id }}"  onclick="unlock('{{ charger.id }}')"          {% if not connected %}disabled{% endif %}>&#128275; Unlock</button>
+        <button class="btn btn-reset btn-sm"   id="btn-reset-{{ charger.id }}"   onclick="doReset('{{ charger.id }}')"         {% if not connected %}disabled{% endif %}>&#8635; Reset</button>
+        <button class="btn btn-cfg btn-sm"     id="btn-cfg-{{ charger.id }}"     onclick="openCfgModal('{{ charger.id }}')"    {% if not connected %}disabled{% endif %}>&#9881; Config</button>
+        <button class="btn btn-edit btn-sm"    onclick="openEditModal('{{ charger.id }}','{{ charger.boot_lock|lower }}','{{ charger.default_max_amps or '' }}')">&#9998; Éditer</button>
+      </div>
+
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <p>Aucune borne enregistrée.</p>
+      <button class="btn btn-add" style="margin-top:1rem" onclick="openModal('add-modal')">+ Ajouter une borne</button>
+    </div>
+    {% endfor %}
+  </div>
+
+</main>
+
+<!-- ══════════════════════════════════════════════════════
+     Modal — Démarrer une session
+══════════════════════════════════════════════════════ -->
+<div class="modal-bg" id="start-modal">
+  <div class="modal">
+    <h3>&#9654; Démarrer une session</h3>
+    <input type="hidden" id="start-cid">
+    <div class="form-group"><label>Borne</label><input type="text" id="start-cid-lbl" disabled></div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Connecteur</label>
+        <input type="number" id="start-conn" value="1" min="1" max="8">
+      </div>
+      <div class="form-group">
+        <label>Badge / ID Tag</label>
+        <input type="text" id="start-tag" value="DASHBOARD">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Limite courant (A) — laisser vide = défaut de la borne</label>
+      <input type="number" id="start-amps" placeholder="ex: 24" min="6" max="48">
+      <div class="hint" id="start-amps-hint"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="closeModals()">Annuler</button>
+      <button class="btn btn-start" onclick="submitStart()">Démarrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     Modal — Arrêter une session
+══════════════════════════════════════════════════════ -->
+<div class="modal-bg" id="stop-modal">
+  <div class="modal">
+    <h3>&#9646; Arrêter une session</h3>
+    <input type="hidden" id="stop-cid">
+    <div class="form-group"><label>Borne</label><input type="text" id="stop-cid-lbl" disabled></div>
+
+    <div class="info-box info">
+      <strong>Transaction ID</strong> — numéro unique assigné au démarrage de la session.
+      Il relie tous les événements (MeterValues, arrêt) à cette session spécifique.
+      Utilisez le bouton <strong>🔍 Détecter</strong> pour le trouver automatiquement.
+    </div>
+
+    <div class="form-group">
+      <label>Transaction ID</label>
+      <div class="input-with-btn">
+        <input type="number" id="stop-txid" placeholder="ex: 7" min="1">
+        <button class="btn btn-detect btn-sm" onclick="detectTxId()" type="button">&#128269; Détecter</button>
+      </div>
+      <div class="hint" id="stop-tx-hint">Cliquez sur Détecter pour trouver la session active.</div>
+    </div>
+
+    <div class="form-group">
+      <label>Verrouiller après l'arrêt</label>
+      <select id="stop-lock">
+        <option value="true">Oui — évite redémarrage automatique (recommandé)</option>
+        <option value="false">Non — la borne peut redémarrer si câble branché</option>
+      </select>
+    </div>
+
+    <div class="info-box warn">
+      &#9888; Si le véhicule reste branché après l'arrêt et redémarre quand même,
+      utilisez <strong>⚡ Couper charge</strong> pour bloquer physiquement l'alimentation.
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="closeModals()">Annuler</button>
+      <button class="btn btn-stop" onclick="submitStop()">Arrêter la session</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     Modal — Couper la charge
+══════════════════════════════════════════════════════ -->
+<div class="modal-bg" id="cut-modal">
+  <div class="modal">
+    <h3>&#9889; Couper la charge</h3>
+    <input type="hidden" id="cut-cid">
+    <div class="form-group"><label>Borne</label><input type="text" id="cut-cid-lbl" disabled></div>
+    <div class="info-box warn">
+      Impose une limite de <strong>0A</strong> via <code>SetChargingProfile</code>.
+      La puissance est coupée immédiatement même si une session OCPP est active.
+      La session reste ouverte — seul le courant est bloqué.
+    </div>
+    <div class="info-box tip">
+      Pour reprendre la charge après, utilisez <strong>⚡ Rétablir charge</strong>.
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="closeModals()">Annuler</button>
+      <button class="btn btn-cut" onclick="submitCut()">Couper la charge</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     Modal — Rétablir la charge
+══════════════════════════════════════════════════════ -->
+<div class="modal-bg" id="restore-modal">
+  <div class="modal">
+    <h3>&#9889; Rétablir la charge</h3>
+    <input type="hidden" id="restore-cid">
+    <div class="form-group"><label>Borne</label><input type="text" id="restore-cid-lbl" disabled></div>
+    <div class="info-box tip">
+      Retire la limite de courant. La charge reprend au courant spécifié ci-dessous.
+    </div>
+    <div class="form-group">
+      <label>Courant de rétablissement (A)</label>
+      <input type="number" id="restore-amps" value="24" min="1" max="48">
+      <div class="hint" id="restore-amps-hint"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="closeModals()">Annuler</button>
+      <button class="btn btn-restore" onclick="submitRestore()">Rétablir la charge</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     Modal — Configuration avancée
+══════════════════════════════════════════════════════ -->
+<div class="modal-bg" id="cfg-modal">
+  <div class="modal" style="max-width:640px">
+    <h3>&#9881; Configuration — <span id="cfg-cid-lbl"></span></h3>
+    <input type="hidden" id="cfg-cid">
+    <div class="tab-bar">
+      <button class="tab active" onclick="switchTab('cfg-read')">Lire</button>
+      <button class="tab" onclick="switchTab('cfg-write')">Modifier</button>
+      <button class="tab" onclick="switchTab('cfg-actions')">Actions avancées</button>
+    </div>
+
+    <div class="tab-panel active" id="cfg-read">
+      <button class="btn btn-cfg btn-sm" onclick="loadConfig()" style="margin-bottom:.75rem">&#8635; Récupérer config</button>
+      <div style="overflow-x:auto">
+        <table class="cfg-table">
+          <thead><tr><th>Clé</th><th>Valeur</th><th></th></tr></thead>
+          <tbody id="cfg-tbody">
+            <tr><td colspan="3" style="color:#64748b;padding:8px">Cliquez sur "Récupérer config"</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="cfg-write">
+      <div class="info-box info" style="margin-bottom:.75rem">
+        Modifie un paramètre de configuration directement sur la borne.
+        Les clés marquées 🔒 sont en lecture seule.
+      </div>
+      <div class="form-group"><label>Clé</label><input type="text" id="cfg-key" placeholder="ex: MeterValueSampleInterval"></div>
+      <div class="form-group"><label>Valeur</label><input type="text" id="cfg-val-input" placeholder="ex: 60"></div>
+      <div class="modal-actions" style="margin-top:0">
+        <button class="btn btn-cfg" onclick="setConfig()">Appliquer</button>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="cfg-actions">
+      <div style="display:flex;flex-direction:column;gap:.5rem">
+        <button class="btn btn-cfg" onclick="doTrigger('MeterValues')">&#9889; Trigger MeterValues</button>
+        <button class="btn btn-cfg" onclick="doTrigger('StatusNotification')">&#128225; Trigger StatusNotification</button>
+        <button class="btn btn-cfg" onclick="doTrigger('BootNotification')">&#128260; Trigger BootNotification</button>
+        <button class="btn btn-cfg" onclick="doTrigger('Heartbeat')">&#128147; Trigger Heartbeat</button>
+        <button class="btn btn-cfg" onclick="doClearCache()">&#128465; Clear Cache</button>
+        <button class="btn btn-cfg" onclick="doGetLocalListVersion()">&#128203; Version liste locale</button>
+        <hr style="border-color:#334155;margin:.25rem 0">
+        <button class="btn btn-reset" onclick="doHardReset()">&#9888; Hard Reset (forcé)</button>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="closeModals()">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     Modal — Éditer borne
+══════════════════════════════════════════════════════ -->
+<div class="modal-bg" id="edit-modal">
+  <div class="modal">
+    <h3>&#9998; Éditer la borne</h3>
+    <input type="hidden" id="edit-cid">
+    <div class="form-group"><label>Borne</label><input type="text" id="edit-cid-lbl" disabled></div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Verrouillage au boot</label>
+        <select id="edit-boot-lock">
+          <option value="true">Oui — inactif jusqu'au démarrage manuel</option>
+          <option value="false">Non — démarre automatiquement</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Courant max par défaut (A)</label>
+        <input type="number" id="edit-max-amps" placeholder="Vide = illimité" min="6" max="48" step="1">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Description</label>
+      <input type="text" id="edit-desc" placeholder="Description optionnelle">
+    </div>
+    <div class="info-box info">
+      Les changements de verrouillage et courant s'appliqueront au <strong>prochain démarrage</strong> de la borne.
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="closeModals()">Annuler</button>
+      <button class="btn btn-start" onclick="submitEdit()">Sauvegarder</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     Modal — Ajouter une borne
+══════════════════════════════════════════════════════ -->
+<div class="modal-bg" id="add-modal">
+  <div class="modal">
+    <h3>+ Ajouter une borne</h3>
+    <div class="form-group">
+      <label>ID de la borne *</label>
+      <input type="text" id="new-id" placeholder="ex: BORNE-GARAGE-01" oninput="updatePreview()">
+      <div class="hint">Doit correspondre exactement à ce que la borne envoie dans BootNotification.</div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Fabricant</label><input type="text" id="new-vendor" placeholder="ex: TechnoVE"></div>
+      <div class="form-group"><label>Modèle</label><input type="text" id="new-model" placeholder="ex: S48"></div>
+    </div>
+    <div class="form-group"><label>Description</label><input type="text" id="new-desc" placeholder="ex: Borne garage principal"></div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Verrouillage au boot</label>
+        <select id="new-boot-lock">
+          <option value="true">Oui — inactif jusqu'au démarrage manuel</option>
+          <option value="false">Non — démarre automatiquement</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Courant max par défaut (A)</label>
+        <input type="number" id="new-max-amps" placeholder="Vide = illimité" min="6" max="48" step="1">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Mot de passe Basic Auth</label>
+      <input type="password" id="new-pass" placeholder="Laisser vide si non requis">
+    </div>
+    <div class="form-group"><label>Notes</label><input type="text" id="new-notes"></div>
+    <div class="url-preview">
+      <strong style="color:#38bdf8">URL à configurer dans la borne :</strong>
+      <code id="url-preview">ws://{{ request.headers.get('host','IP_SERVEUR').split(':')[0] }}:9000/ocpp/[ID_BORNE]</code>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="closeModals()">Annuler</button>
+      <button class="btn btn-add" onclick="submitAdd()">Ajouter</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const serverHost = location.hostname;
+let activeTxIds = {};
+let chargerDefaults = {};
+
+// ═══════════════════════════════════════════════════════
+// WebSocket
+// ═══════════════════════════════════════════════════════
+let ws;
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws/dashboard`);
+  const statusEl = document.getElementById('ws-status');
+  ws.onopen  = () => { statusEl.textContent = '● Connecté'; statusEl.className = 'badge b-available'; };
+  ws.onclose = () => { statusEl.textContent = '● Déconnecté'; statusEl.className = 'badge b-offline'; setTimeout(connectWS, 5000); };
+  ws.onerror = () => {};
+  ws.onmessage = (e) => {
+    const d = JSON.parse(e.data);
+    if      (d.type === 'status_update')      onStatusUpdate(d);
+    else if (d.type === 'meter_value')        onMeterValue(d);
+    else if (d.type === 'heartbeat')          onHeartbeat(d);
+    else if (d.type === 'transaction')        onTransaction(d);
+    else if (d.type === 'connected_chargers') onConnectedList(d);
+    else if (d.type === 'config')             onConfig(d);
+  };
+}
+connectWS();
+
+// ═══════════════════════════════════════════════════════
+// Handlers WebSocket
+// ═══════════════════════════════════════════════════════
+function onConnectedList(d) {
+  document.getElementById('s-conn').textContent = d.chargers.length;
+  d.chargers.forEach(id => setConnected(id, true));
+}
+
+function onStatusUpdate(d) {
+  const { charger_id, connector_id, status } = d;
+  if (connector_id === 0 || connector_id === undefined) {
+    const badge = document.getElementById(`status-${charger_id}`);
+    if (badge) { badge.textContent = status; badge.className = `badge b-${status.toLowerCase()}`; }
+    setConnected(charger_id, status !== 'Offline');
+  } else {
+    const cs = document.getElementById(`cs-${charger_id}-${connector_id}`);
+    if (cs) cs.textContent = status;
+  }
+}
+
+function setConnected(id, on) {
+  const card = document.getElementById(`card-${id}`);
+  const bar  = document.getElementById(`connbar-${id}`);
+  const dot  = document.getElementById(`dot-${id}`);
+  const lbl  = document.getElementById(`connlbl-${id}`);
+  if (card) card.classList.toggle('connected', on);
+  if (bar)  bar.className = `conn-bar ${on ? 'on' : 'off'}`;
+  if (dot)  dot.className = `conn-dot ${on ? 'on' : 'off'}`;
+  if (lbl)  lbl.textContent = on ? 'WebSocket connecté' : 'Hors ligne — commandes indisponibles';
+  ['start','stop','cut','restore','avail','unavail','unlock','reset','cfg'].forEach(b => {
+    const btn = document.getElementById(`btn-${b}-${id}`);
+    if (btn) btn.disabled = !on;
+  });
+}
+
+function onHeartbeat(d) {
+  const el = document.getElementById(`hb-${d.charger_id}`);
+  if (el) el.textContent = `Heartbeat : ${new Date(d.timestamp).toLocaleTimeString('fr-CA')}`;
+}
+
+function onTransaction(d) {
+  const txEl = document.getElementById(`tx-${d.charger_id}`);
+  if (d.action === 'start') {
+    activeTxIds[d.charger_id] = d.transaction_id;
+    if (txEl) {
+      txEl.textContent = `Session active — Transaction #${d.transaction_id}`;
+      txEl.className = 'tx-info active';
+    }
+    const s = document.getElementById('s-active');
+    if (s) s.textContent = parseInt(s.textContent || '0') + 1;
+  } else {
+    delete activeTxIds[d.charger_id];
+    if (txEl) {
+      txEl.textContent = 'Aucune session active';
+      txEl.className = 'tx-info';
+    }
+    const box = document.getElementById(`powerbox-${d.charger_id}`);
+    if (box) box.classList.remove('power-cut');
+    const s = document.getElementById('s-active');
+    if (s) s.textContent = Math.max(0, parseInt(s.textContent || '1') - 1);
+  }
+}
+
+function onMeterValue(d) {
+  const { charger_id, power_w, energy_wh, session_energy_wh, current_a, voltage_v, soc_percent } = d;
+  if (power_w != null) addPowerPoint(charger_id, power_w);
+  const ep = document.getElementById(`m-power-${charger_id}`);
+  if (ep) ep.textContent = power_w != null ? `${Math.round(power_w)} W` : '— W';
+  const ec = document.getElementById(`m-current-${charger_id}`);
+  if (ec && current_a != null) ec.textContent = `${current_a.toFixed(1)} A`;
+  const es = document.getElementById(`m-session-${charger_id}`);
+  // Utiliser l'énergie session si disponible, sinon registre brut
+  const displayEnergy = session_energy_wh != null ? session_energy_wh : energy_wh;
+  if (es && displayEnergy != null) es.textContent = `${(Math.max(0, displayEnergy)/1000).toFixed(2)} kWh`;
+  const ev = document.getElementById(`m-voltage-${charger_id}`);
+  if (ev && voltage_v != null) ev.textContent = `${Math.round(voltage_v)} V`;
+  // SoC si présent
+  const esoc = document.getElementById(`m-soc-${charger_id}`);
+  if (esoc && soc_percent != null) esoc.textContent = `${Math.round(soc_percent)} %`;
+}
+
+function onConfig(d) {
+  if (document.getElementById('cfg-cid')?.value === d.charger_id)
+    renderConfigTable(d.config);
+}
+
+// ═══════════════════════════════════════════════════════
+// Graphique puissance
+// ═══════════════════════════════════════════════════════
+const pData = { labels: [], datasets: [] };
+const pChart = new Chart(document.getElementById('powerChart'), {
+  type: 'line', data: pData,
+  options: {
+    responsive: true, animation: false,
+    scales: {
+      x: { ticks: { color: '#64748b', maxTicksLimit: 8 }, grid: { color: '#1e293b' } },
+      y: { ticks: { color: '#64748b' }, grid: { color: '#334155' }, min: 0 },
+    },
+    plugins: { legend: { labels: { color: '#e2e8f0', font: { size: 11 } } } },
+  },
+});
+const COLORS = ['#38bdf8','#34d399','#f59e0b','#f87171','#a78bfa','#fb923c'];
+const cIdx = {}; let cidx = 0;
+function addPowerPoint(id, w) {
+  const t = new Date().toLocaleTimeString('fr-CA', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  if (pData.labels[pData.labels.length-1] !== t) {
+    pData.labels.push(t);
+    if (pData.labels.length > 50) pData.labels.shift();
+  }
+  if (!cIdx[id]) cIdx[id] = COLORS[cidx++ % COLORS.length];
+  let ds = pData.datasets.find(d => d.label === id);
+  if (!ds) { ds = { label: id, data: [], borderColor: cIdx[id], tension: 0.3, fill: false, pointRadius: 2 }; pData.datasets.push(ds); }
+  ds.data.push(Math.round(w));
+  if (ds.data.length > 50) ds.data.shift();
+  pChart.update('none');
+}
+
+// ═══════════════════════════════════════════════════════
+// Stats initiales au chargement
+// ═══════════════════════════════════════════════════════
+async function loadStats(id) {
+  try {
+    const r = await fetch(`/api/chargers/${id}/stats`);
+    if (!r.ok) return;
+    const d = await r.json();
+    const et = document.getElementById(`total-${id}`);
+    if (et) et.textContent = `Total livré : ${d.total_delivered_kwh} kWh`;
+    if (d.current_power_w != null) {
+      const ep = document.getElementById(`m-power-${id}`);
+      if (ep) ep.textContent = `${Math.round(d.current_power_w)} W`;
+    }
+    if (d.session_energy_wh != null) {
+      const es = document.getElementById(`m-session-${id}`);
+      if (es) es.textContent = `${(d.session_energy_wh/1000).toFixed(2)} kWh`;
+    }
+    if (d.active_transaction_id) {
+      activeTxIds[id] = d.active_transaction_id;
+      const txEl = document.getElementById(`tx-${id}`);
+      if (txEl) {
+        txEl.textContent = `Session active — Transaction #${d.active_transaction_id}`;
+        txEl.className = 'tx-info active';
+      }
+    }
+  } catch(e) {}
+}
+
+document.querySelectorAll('.charger-card').forEach(c => {
+  const id = c.id.replace('card-', '');
+  loadStats(id);
+  fetch(`/api/chargers/${id}`).then(r => r.json()).then(d => {
+    chargerDefaults[id] = { boot_lock: d.boot_lock, max_amps: d.default_max_amps };
+  }).catch(() => {});
+});
+setInterval(() => {
+  document.querySelectorAll('.charger-card').forEach(c => loadStats(c.id.replace('card-','')));
+}, 30000);
+
+// ═══════════════════════════════════════════════════════
+// Helpers API
+// ═══════════════════════════════════════════════════════
+async function api(url, body) {
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const d = await r.json();
+  return { ok: r.ok, data: d };
+}
+
+// ═══════════════════════════════════════════════════════
+// Démarrer
+// ═══════════════════════════════════════════════════════
+function openStartModal(id) {
+  document.getElementById('start-cid').value = id;
+  document.getElementById('start-cid-lbl').value = id;
+  document.getElementById('start-amps').value = '';
+  const def = chargerDefaults[id];
+  const hint = document.getElementById('start-amps-hint');
+  if (def?.max_amps)
+    hint.textContent = `Défaut configuré pour cette borne : ${def.max_amps} A. Laisser vide pour utiliser cette valeur.`;
+  else
+    hint.textContent = 'Aucun courant par défaut — la borne utilisera son maximum si ce champ est vide.';
+  openModal('start-modal');
+}
+
+async function submitStart() {
+  const id   = document.getElementById('start-cid').value;
+  const conn = parseInt(document.getElementById('start-conn').value);
+  const tag  = document.getElementById('start-tag').value || 'DASHBOARD';
+  const amps = document.getElementById('start-amps').value;
+  const body = { charger_id: id, connector_id: conn, id_tag: tag };
+  if (amps) body.max_amps = parseFloat(amps);
+  const { ok, data } = await api('/api/commands/remote-start', body);
+  closeModals();
+  toast(ok ? `✓ ${data.detail}` : `✗ ${data.detail}`, ok);
+}
+
+// ═══════════════════════════════════════════════════════
+// Arrêter
+// ═══════════════════════════════════════════════════════
+function openStopModal(id) {
+  document.getElementById('stop-cid').value = id;
+  document.getElementById('stop-cid-lbl').value = id;
+  document.getElementById('stop-txid').value = activeTxIds[id] || '';
+  const hint = document.getElementById('stop-tx-hint');
+  if (activeTxIds[id])
+    hint.textContent = `Transaction active détectée : #${activeTxIds[id]}`;
+  else
+    hint.textContent = 'Cliquez sur Détecter pour trouver la session active.';
+  openModal('stop-modal');
+}
+
+async function detectTxId() {
+  const id = document.getElementById('stop-cid').value;
+  const hint = document.getElementById('stop-tx-hint');
+  hint.textContent = 'Recherche en cours...';
+  try {
+    const r = await fetch(`/api/commands/active-transaction/${id}`);
+    const d = await r.json();
+    if (d.transaction_id) {
+      document.getElementById('stop-txid').value = d.transaction_id;
+      activeTxIds[id] = d.transaction_id;
+      hint.textContent = `✓ Transaction #${d.transaction_id} — démarrée à ${new Date(d.start_time).toLocaleTimeString('fr-CA')} — badge: ${d.id_tag}`;
+      hint.style.color = '#86efac';
+    } else {
+      hint.textContent = '✗ Aucune session active trouvée pour cette borne.';
+      hint.style.color = '#fca5a5';
+    }
+  } catch(e) {
+    hint.textContent = '✗ Erreur lors de la détection.';
+    hint.style.color = '#fca5a5';
+  }
+}
+
+async function submitStop() {
+  const id   = document.getElementById('stop-cid').value;
+  const txid = parseInt(document.getElementById('stop-txid').value);
+  const lock = document.getElementById('stop-lock').value === 'true';
+  if (!txid) {
+    toast('✗ Transaction ID requis — cliquez sur Détecter', false);
+    return;
+  }
+  const { ok, data } = await api('/api/commands/remote-stop', {
+    charger_id: id, transaction_id: txid, lock
+  });
+  closeModals();
+  toast(ok ? `✓ ${data.detail}` : `✗ ${data.detail}`, ok);
+}
+
+// ═══════════════════════════════════════════════════════
+// Couper / Rétablir charge
+// ═══════════════════════════════════════════════════════
+function openCutModal(id) {
+  document.getElementById('cut-cid').value = id;
+  document.getElementById('cut-cid-lbl').value = id;
+  openModal('cut-modal');
+}
+
+async function submitCut() {
+  const id = document.getElementById('cut-cid').value;
+  const { ok, data } = await api('/api/commands/set-power-limit', {
+    charger_id: id, connector_id: 0, max_amps: 0
+  });
+  closeModals();
+  toast(ok ? `✓ ${data.detail}` : `✗ ${data.detail}`, ok);
+  if (ok) {
+    const box = document.getElementById(`powerbox-${id}`);
+    if (box) box.classList.add('power-cut');
+  }
+}
+
+function openRestoreModal(id) {
+  document.getElementById('restore-cid').value = id;
+  document.getElementById('restore-cid-lbl').value = id;
+  const def = chargerDefaults[id];
+  document.getElementById('restore-amps').value = def?.max_amps || 24;
+  const hint = document.getElementById('restore-amps-hint');
+  hint.textContent = def?.max_amps
+    ? `Courant par défaut de cette borne : ${def.max_amps} A`
+    : 'Aucun défaut configuré — entrez le courant désiré.';
+  openModal('restore-modal');
+}
+
+async function submitRestore() {
+  const id   = document.getElementById('restore-cid').value;
+  const amps = parseFloat(document.getElementById('restore-amps').value);
+  if (!amps || amps <= 0) { toast('✗ Courant invalide', false); return; }
+  const { ok, data } = await api('/api/commands/set-power-limit', {
+    charger_id: id, connector_id: 0, max_amps: amps
+  });
+  closeModals();
+  toast(ok ? `✓ ${data.detail}` : `✗ ${data.detail}`, ok);
+  if (ok) {
+    const box = document.getElementById(`powerbox-${id}`);
+    if (box) box.classList.remove('power-cut');
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// Disponibilité
+// ═══════════════════════════════════════════════════════
+async function setAvail(id, avail) {
+  const url = avail ? '/api/commands/set-available' : '/api/commands/set-unavailable';
+  const { ok, data } = await api(url, { charger_id: id, connector_id: 1 });
+  toast(ok ? `✓ ${data.detail}` : `✗ ${data.detail}`, ok);
+}
+
+// ═══════════════════════════════════════════════════════
+// Unlock
+// ═══════════════════════════════════════════════════════
+async function unlock(id) {
+  const { ok, data } = await api('/api/commands/unlock', { charger_id: id, connector_id: 1 });
+  toast(ok ? `✓ ${data.detail}` : `✗ ${data.detail}`, ok);
+}
+
+// ═══════════════════════════════════════════════════════
+// Reset
+// ═══════════════════════════════════════════════════════
+async function doReset(id) {
+  if (!confirm(`Reset Soft de la borne ${id} ?`)) return;
+  const { ok, data } = await api('/api/commands/reset', { charger_id: id, reset_type: 'Soft' });
+  toast(ok ? `✓ ${data.detail}` : `✗ ${data.detail}`, ok);
+}
+
+async function doHardReset() {
+  const id = document.getElementById('cfg-cid').value;
+  if (!confirm(`HARD RESET de ${id} ?\nCette opération est forcée et peut interrompre une session active.`)) return;
+  const { ok, data } = await api('/api/commands/reset', { charger_id: id, reset_type: 'Hard' });
+  toast(ok ? `✓ ${data.detail}` : `✗ ${data.detail}`, ok);
+}
+
+// ═══════════════════════════════════════════════════════
+// Configuration
+// ═══════════════════════════════════════════════════════
+function openCfgModal(id) {
+  document.getElementById('cfg-cid').value = id;
+  document.getElementById('cfg-cid-lbl').textContent = id;
+  switchTab('cfg-read');
+  openModal('cfg-modal');
+}
+
+async function loadConfig() {
+  const id = document.getElementById('cfg-cid').value;
+  const r = await fetch('/api/commands/config/get', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ charger_id: id, keys: [] })
+  });
+  const d = await r.json();
+  if (r.ok) renderConfigTable(d.configuration);
+  else toast(`✗ ${d.detail}`, false);
+}
+
+function renderConfigTable(cfg) {
+  const tbody = document.getElementById('cfg-tbody');
+  if (!cfg || !Object.keys(cfg).length) {
+    tbody.innerHTML = '<tr><td colspan="3" style="color:#64748b;padding:8px">Aucune configuration disponible</td></tr>';
+    return;
+  }
+  tbody.innerHTML = Object.entries(cfg)
+    .sort(([a],[b]) => a.localeCompare(b))
+    .map(([k,v]) => {
+      const val = typeof v === 'object' ? v.value : v;
+      const ro  = typeof v === 'object' && v.readonly;
+      return `<tr>
+        <td style="color:#94a3b8">${k}</td>
+        <td class="cfg-val">${val ?? '—'}</td>
+        <td class="cfg-ro">${ro ? '🔒' : ''}</td>
+      </tr>`;
+    }).join('');
+}
+
+async function setConfig() {
+  const id  = document.getElementById('cfg-cid').value;
+  const key = document.getElementById('cfg-key').value.trim();
+  const val = document.getElementById('cfg-val-input').value.trim();
+  if (!key) { toast('✗ Clé requise', false); return; }
+  const { ok, data } = await api('/api/commands/config/set', { charger_id: id, key, value: val });
+  toast(ok ? `✓ ${data.detail}` : `✗ ${data.detail}`, ok);
+}
+
+async function doTrigger(msg) {
+  const id = document.getElementById('cfg-cid').value;
+  const { ok, data } = await api('/api/commands/trigger', {
+    charger_id: id, message: msg, connector_id: 1
+  });
+  toast(ok ? `✓ ${data.detail}` : `✗ ${data.detail}`, ok);
+}
+
+async function doClearCache() {
+  const id = document.getElementById('cfg-cid').value;
+  const { ok, data } = await api('/api/commands/clear-cache', { charger_id: id });
+  toast(ok ? `✓ ${data.detail}` : `✗ ${data.detail}`, ok);
+}
+
+async function doGetLocalListVersion() {
+  const id = document.getElementById('cfg-cid').value;
+  const r  = await fetch(`/api/commands/local-list/version/${id}`);
+  const d  = await r.json();
+  toast(r.ok ? `📋 Version liste locale : ${d.list_version}` : `✗ ${d.detail}`, r.ok);
+}
+
+// ═══════════════════════════════════════════════════════
+// Éditer borne
+// ═══════════════════════════════════════════════════════
+function openEditModal(id, bootLock, maxAmps) {
+  document.getElementById('edit-cid').value = id;
+  document.getElementById('edit-cid-lbl').value = id;
+  document.getElementById('edit-boot-lock').value = bootLock;
+  document.getElementById('edit-max-amps').value = maxAmps;
+  document.getElementById('edit-desc').value = '';
+  openModal('edit-modal');
+}
+
+async function submitEdit() {
+  const id   = document.getElementById('edit-cid').value;
+  const lock = document.getElementById('edit-boot-lock').value === 'true';
+  const amps = document.getElementById('edit-max-amps').value;
+  const desc = document.getElementById('edit-desc').value;
+  const body = {
+    boot_lock:        lock,
+    default_max_amps: amps ? parseFloat(amps) : null,
+  };
+  if (desc) body.description = desc;
+  const r = await fetch(`/api/chargers/${id}`, {
+    method:  'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(body)
+  });
+  const d = await r.json();
+  if (r.ok) {
+    closeModals();
+    toast(`✓ Borne ${id} mise à jour`, true);
+    chargerDefaults[id] = { boot_lock: lock, max_amps: amps ? parseFloat(amps) : null };
+    setTimeout(() => location.reload(), 1200);
+  } else {
+    toast(`✗ ${d.detail || 'Erreur'}`, false);
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// Ajouter borne
+// ═══════════════════════════════════════════════════════
+function updatePreview() {
+  const id = document.getElementById('new-id').value.trim() || '[ID_BORNE]';
+  document.getElementById('url-preview').textContent = `ws://${serverHost}:9000/ocpp/${id}`;
+}
+
+async function submitAdd() {
+  const id = document.getElementById('new-id').value.trim();
+  if (!id) { toast('✗ ID requis', false); return; }
+  const amps = document.getElementById('new-max-amps').value;
+  const { ok, data } = await api('/api/chargers/', {
+    id,
+    description:      document.getElementById('new-desc').value   || null,
+    manufacturer:     document.getElementById('new-vendor').value || null,
+    model:            document.getElementById('new-model').value  || null,
+    auth_password:    document.getElementById('new-pass').value   || null,
+    notes:            document.getElementById('new-notes').value  || null,
+    boot_lock:        document.getElementById('new-boot-lock').value === 'true',
+    default_max_amps: amps ? parseFloat(amps) : null,
+  });
+  if (ok) {
+    closeModals();
+    toast(`✓ Borne "${id}" ajoutée`, true);
+    setTimeout(() => location.reload(), 1400);
+  } else {
+    toast(`✗ ${data.detail || 'Erreur'}`, false);
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// UI helpers
+// ═══════════════════════════════════════════════════════
+function openModal(id) {
+  document.getElementById(id).classList.add('open');
+}
+function closeModals() {
+  document.querySelectorAll('.modal-bg').forEach(m => m.classList.remove('open'));
+}
+document.querySelectorAll('.modal-bg').forEach(bg => {
+  bg.addEventListener('click', e => { if (e.target === bg) closeModals(); });
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeModals();
+});
+
+function switchTab(id) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  const idx = ['cfg-read','cfg-write','cfg-actions'].indexOf(id);
+  document.querySelectorAll('.tab')[idx]?.classList.add('active');
+}
+
+function toast(msg, ok) {
+  const t = document.createElement('div');
+  t.textContent = msg;
+  t.className = 'toast';
+  Object.assign(t.style, {
+    background: ok ? '#166534' : '#7f1d1d',
+    color:      ok ? '#86efac' : '#fca5a5',
+  });
+  document.body.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 400); }, 3500);
+}
+</script>
+</body>
+</html>

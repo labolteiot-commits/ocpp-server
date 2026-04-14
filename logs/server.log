@@ -1,0 +1,3 @@
+nohup: ignoring input
+❌ Une instance tourne déjà (PID 108308). Arrêt.
+   → Pour forcer l'arrêt : python main.py --stop
