@@ -20355,3 +20355,188 @@
 [2m2026-04-14T19:54:54.007575Z[0m [[32m[1minfo     [0m] [1mProfil fabricant calculé      [0m [36mid[0m=[35mVIRTUAL-001[0m [36mlocal_id_tag[0m=[35mADMIN[0m [36mmanufacturer[0m=[35mVirtual[0m [36mremote_start_delay[0m=[35m1.0[0m
 [2m2026-04-14T19:54:56.050400Z[0m [[32m[1minfo     [0m] [1mRemise Operative du connecteur au boot[0m [36mid[0m=[35mVIRTUAL-001[0m
 [2m2026-04-14T19:54:57.714501Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 53406)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T19:55:23.871948Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mAvailable[0m
+[2m2026-04-14T19:55:23.963518Z[0m [[32m[1minfo     [0m] [1mConfiguration complète récupérée[0m [36mcount[0m=[35m10[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T19:55:25.164901Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mAvailable[0m
+[2m2026-04-14T19:55:26.862904Z[0m [[32m[1minfo     [0m] [1mStatut réel connecteur après boot[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mAvailable[0m [36mvehicle_present[0m=[35mFalse[0m
+[2m2026-04-14T19:55:26.868602Z[0m [[32m[1minfo     [0m] [1mMeasurands retenus            [0m [36mfinal[0m=[35m['Energy.Active.Import.Register', 'Power.Active.Import', 'Current.Import', 'Voltage', 'SoC'][0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T19:55:26.873977Z[0m [[32m[1minfo     [0m] [1mConfig MeterValueSampleInterval=60[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T19:55:26.878333Z[0m [[32m[1minfo     [0m] [1mConfig MeterValuesSampledData=Energy.Active.Import.Register,Power.Active.Import,Current.Import,Voltage,SoC[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T19:55:26.884144Z[0m [[32m[1minfo     [0m] [1mConfig HeartbeatInterval=30   [0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T19:55:26.891430Z[0m [[32m[1minfo     [0m] [1mConfig ConnectionTimeOut=60   [0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T19:55:26.895988Z[0m [[32m[1minfo     [0m] [1mConfig StopTransactionOnEVSideDisconnect=true[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T19:55:26.901346Z[0m [[32m[1minfo     [0m] [1mConfig Cst_MeterValuesInTxOnly=false[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T19:55:26.906719Z[0m [[32m[1minfo     [0m] [1mBorne verrouillée au boot (pas de véhicule)[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T19:55:26.910213Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mUnavailable[0m
+[2m2026-04-14T19:55:49.733122Z[0m [[32m[1minfo     [0m] [1mSetChargingProfile            [0m [36mconnector[0m=[35m0[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mstatus[0m=[35mAccepted[0m
+[2m2026-04-14T19:56:10.182149Z[0m [[32m[1minfo     [0m] [1mProfil de charge appliqué     [0m [36mamps[0m=[35m24.0[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:56:10.465347Z[0m [[31m[1merror    [0m] [1mRemoteStart échoué            [0m [36merror[0m=[35m'NoneType' object has no attribute 'status'[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:56:19.197525Z[0m [[32m[1minfo     [0m] [1mReset                         [0m [36mid[0m=[35mBORNE-CABANON4[0m [36msuccess[0m=[35mTrue[0m [36mtype[0m=[35mSoft[0m
+[2m2026-04-14T19:56:19.331696Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m0[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mstatus[0m=[35mUnavailable[0m
+[2m2026-04-14T19:56:19.416031Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mstatus[0m=[35mUnavailable[0m
+[2m2026-04-14T19:56:37.677401Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mPreparing[0m
+[2m2026-04-14T19:56:37.723297Z[0m [[32m[1minfo     [0m] [1mVéhicule détecté → démarrage polling MeterValues[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T19:56:37.730191Z[0m [[32m[1minfo     [0m] [1mDémarrage polling MeterValues [0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T19:56:42.731621Z[0m [[32m[1minfo     [0m] [1mCréation session synthétique (charge sans StartTransaction OCPP)[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T19:56:44.631686Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:56:44.631936Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:56:44.653833Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:57:03.026339Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 55740)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T19:57:03.269822Z[0m [[32m[1minfo     [0m] [1mBootNotification              [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mmodel[0m=[35mCharge Box model[0m [36mvendor[0m=[35mTechnoVE[0m
+[2m2026-04-14T19:57:03.306746Z[0m [[32m[1minfo     [0m] [1mSessions orphelines fermées au reconnect[0m [36mcount[0m=[35m2[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:57:03.324491Z[0m [[32m[1minfo     [0m] [1mProfil fabricant calculé      [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mlocal_id_tag[0m=[35mADMIN[0m [36mmanufacturer[0m=[35mTechnoVE[0m [36mremote_start_delay[0m=[35m3.0[0m
+[2m2026-04-14T19:57:03.618114Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m0[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mstatus[0m=[35mAvailable[0m
+[2m2026-04-14T19:57:03.815291Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mstatus[0m=[35mPreparing[0m
+[2m2026-04-14T19:57:03.876531Z[0m [[32m[1minfo     [0m] [1mVéhicule détecté → démarrage polling MeterValues[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:57:03.879253Z[0m [[32m[1minfo     [0m] [1mDémarrage polling MeterValues [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:57:05.365054Z[0m [[32m[1minfo     [0m] [1mTechnoVE — SetChargingProfile différé (véhicule présent au boot)[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mstatus[0m=[35mPreparing[0m
+[2m2026-04-14T19:57:05.365270Z[0m [[32m[1minfo     [0m] [1mRemise Operative du connecteur au boot[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:57:07.123781Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mstatus[0m=[35mPreparing[0m
+[2m2026-04-14T19:57:08.880837Z[0m [[32m[1minfo     [0m] [1mCréation session synthétique (charge sans StartTransaction OCPP)[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:57:08.998157Z[0m [[32m[1minfo     [0m] [1mStatut réel connecteur après boot[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mstatus[0m=[35mPreparing[0m [36mvehicle_present[0m=[35mTrue[0m
+[2m2026-04-14T19:57:09.223552Z[0m [[32m[1minfo     [0m] [1mMeasurands retenus            [0m [36mfinal[0m=[35m['Energy.Active.Import.Register', 'Power.Active.Import'][0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:57:09.576231Z[0m [[32m[1minfo     [0m] [1mConfig MeterValueSampleInterval=60[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:57:09.876148Z[0m [[32m[1minfo     [0m] [1mConfig MeterValuesSampledData=Energy.Active.Import.Register,Power.Active.Import[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:57:10.060082Z[0m [[32m[1minfo     [0m] [1mConfig HeartbeatInterval=30   [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:57:10.230598Z[0m [[32m[1minfo     [0m] [1mConfig ConnectionTimeOut=60   [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:57:10.418095Z[0m [[32m[1minfo     [0m] [1mConfig StopTransactionOnEVSideDisconnect=true[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:57:10.723578Z[0m [[32m[1minfo     [0m] [1mConfig Cst_MeterValuesInTxOnly=false[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:57:10.723798Z[0m [[32m[1minfo     [0m] [1mVéhicule détecté au boot — démarrage polling MeterValues[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:57:13.630150Z[0m [[32m[1minfo     [0m] [1mConfiguration complète récupérée[0m [36mcount[0m=[35m40[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:57:25.827262Z[0m [[32m[1minfo     [0m] [1mRemoteStart                   [0m [36mamps[0m=[35mNone[0m [36mconnector[0m=[35m1[0m [36mid[0m=[35mVIRTUAL-001[0m [36msuccess[0m=[35mTrue[0m
+[2m2026-04-14T19:57:26.328774Z[0m [[32m[1minfo     [0m] [1mStartTransaction              [0m [36mconnector[0m=[35m1[0m [36mid[0m=[35mVIRTUAL-001[0m [36mid_tag[0m=[35mVIRTUAL-001[0m [36mtransaction_id[0m=[35m1[0m
+[2m2026-04-14T19:57:26.328997Z[0m [[32m[1minfo     [0m] [1mFermeture session synthétique [0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T19:57:26.415807Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mCharging[0m
+[2m2026-04-14T19:57:26.449312Z[0m [[32m[1minfo     [0m] [1mSendLocalList                 [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mid_tag[0m=[35mADMIN[0m [36mstatus[0m=[35mAccepted[0m
+[2m2026-04-14T19:57:54.479142Z[0m [[32m[1minfo     [0m] [1mProfil de charge appliqué     [0m [36mamps[0m=[35m24.0[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:57:54.884024Z[0m [[32m[1minfo     [0m] [1mRemoteStart                   [0m [36mamps[0m=[35m24.0[0m [36mconnector[0m=[35m1[0m [36mid[0m=[35mBORNE-CABANON4[0m [36msuccess[0m=[35mTrue[0m
+[2m2026-04-14T19:58:10.187869Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:58:10.188355Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:58:10.214620Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:58:28.837383Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 63220)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T19:58:32.497932Z[0m [[32m[1minfo     [0m] [1mBootNotification              [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mmodel[0m=[35mCharge Box model[0m [36mvendor[0m=[35mTechnoVE[0m
+[2m2026-04-14T19:58:32.519488Z[0m [[32m[1minfo     [0m] [1mSessions orphelines fermées au reconnect[0m [36mcount[0m=[35m1[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:58:32.530144Z[0m [[32m[1minfo     [0m] [1mProfil fabricant calculé      [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mlocal_id_tag[0m=[35mADMIN[0m [36mmanufacturer[0m=[35mTechnoVE[0m [36mremote_start_delay[0m=[35m3.0[0m
+[2m2026-04-14T19:58:40.268156Z[0m [[32m[1minfo     [0m] [1mStartTransaction              [0m [36mconnector[0m=[35m1[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mid_tag[0m=[35mBORNE-CABANON4[0m [36mtransaction_id[0m=[35m1[0m
+[2m2026-04-14T19:58:40.305595Z[0m [[32m[1minfo     [0m] [1mTechnoVE — TxDefaultProfile appliqué au boot[0m [36mamps[0m=[35m24.0[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:58:40.305796Z[0m [[32m[1minfo     [0m] [1mRemise Operative du connecteur au boot[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:58:47.682514Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m0[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mstatus[0m=[35mAvailable[0m
+[2m2026-04-14T19:58:49.282476Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mstatus[0m=[35mCharging[0m
+[2m2026-04-14T19:58:49.315395Z[0m [[32m[1minfo     [0m] [1mVéhicule détecté → démarrage polling MeterValues[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:58:49.316525Z[0m [[32m[1minfo     [0m] [1mDémarrage polling MeterValues [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:58:54.317777Z[0m [[32m[1minfo     [0m] [1mCréation session synthétique (charge sans StartTransaction OCPP)[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:59:04.453557Z[0m [[32m[1minfo     [0m] [1mConfiguration complète récupérée[0m [36mcount[0m=[35m40[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:59:08.844251Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:59:08.844480Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:59:08.858167Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:59:12.816027Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 63221)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T19:59:15.010596Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mstatus[0m=[35mCharging[0m
+[2m2026-04-14T19:59:15.034891Z[0m [[32m[1minfo     [0m] [1mVéhicule détecté → démarrage polling MeterValues[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:59:15.036045Z[0m [[32m[1minfo     [0m] [1mDémarrage polling MeterValues [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:59:20.036775Z[0m [[32m[1minfo     [0m] [1mCréation session synthétique (charge sans StartTransaction OCPP)[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:03:52.305857Z[0m [[33m[1mwarning  [0m] [1mPolling MeterValues échoué    [0m [36merror[0m=[35mWaited 30s for response on [2,"8e7efb6f-2600-4924-972f-4f53cd8194c0","TriggerMessage",{"requestedMessage":"MeterValues","connectorId":1}].[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:04:24.598914Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:04:24.599348Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:04:24.622397Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:04:26.519596Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 63222)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T20:06:05.669922Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mSuspendedEV[0m
+[2m2026-04-14T20:24:29.302405Z[0m [[32m[1minfo     [0m] [1mDémarrage                     [0m [36mapi_port[0m=[35m8000[0m [36mapp[0m=[35mMon Serveur OCPP[0m [36menv[0m=[35mproduction[0m [36mocpp_port[0m=[35m9000[0m
+[2m2026-04-14T20:24:29.321715Z[0m [[32m[1minfo     [0m] [1mBase de données initialisée   [0m
+[2m2026-04-14T20:24:29.396007Z[0m [[32m[1minfo     [0m] [1mDémarrage OCPP WebSocket      [0m [36mhost[0m=[35m0.0.0.0[0m [36mport[0m=[35m9000[0m
+[2m2026-04-14T20:24:29.418804Z[0m [[32m[1minfo     [0m] [1mServeur OCPP prêt             [0m [36murl[0m=[35mws://0.0.0.0:9000/ocpp/[ID_BORNE][0m
+[2m2026-04-14T20:24:30.603264Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mVIRTUAL-001[0m [36mip[0m=[35m('127.0.0.1', 40696)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T20:24:30.610215Z[0m [[32m[1minfo     [0m] [1mBootNotification              [0m [36mid[0m=[35mVIRTUAL-001[0m [36mmodel[0m=[35mSimV1[0m [36mvendor[0m=[35mVirtual[0m
+[2m2026-04-14T20:24:30.644551Z[0m [[32m[1minfo     [0m] [1mSessions orphelines fermées au reconnect[0m [36mcount[0m=[35m1[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T20:24:30.678536Z[0m [[32m[1minfo     [0m] [1mProfil fabricant calculé      [0m [36mid[0m=[35mVIRTUAL-001[0m [36mlocal_id_tag[0m=[35mADMIN[0m [36mmanufacturer[0m=[35mVirtual[0m [36mremote_start_delay[0m=[35m1.0[0m
+[2m2026-04-14T20:24:31.140542Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 63223)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T20:24:32.714892Z[0m [[32m[1minfo     [0m] [1mRemise Operative du connecteur au boot[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T20:25:00.501073Z[0m [[32m[1minfo     [0m] [1mConfiguration complète récupérée[0m [36mcount[0m=[35m10[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T20:25:03.489396Z[0m [[32m[1minfo     [0m] [1mStatut réel connecteur après boot[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mUnknown[0m [36mvehicle_present[0m=[35mFalse[0m
+[2m2026-04-14T20:25:03.494480Z[0m [[32m[1minfo     [0m] [1mMeasurands retenus            [0m [36mfinal[0m=[35m['Energy.Active.Import.Register', 'Power.Active.Import', 'Current.Import', 'Voltage', 'SoC'][0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T20:25:03.506109Z[0m [[32m[1minfo     [0m] [1mConfig MeterValueSampleInterval=60[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T20:25:03.512567Z[0m [[32m[1minfo     [0m] [1mConfig MeterValuesSampledData=Energy.Active.Import.Register,Power.Active.Import,Current.Import,Voltage,SoC[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T20:25:03.517700Z[0m [[32m[1minfo     [0m] [1mConfig HeartbeatInterval=30   [0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T20:25:03.523004Z[0m [[32m[1minfo     [0m] [1mConfig ConnectionTimeOut=60   [0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T20:25:03.528896Z[0m [[32m[1minfo     [0m] [1mConfig StopTransactionOnEVSideDisconnect=true[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T20:25:03.533455Z[0m [[32m[1minfo     [0m] [1mConfig Cst_MeterValuesInTxOnly=false[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T20:25:03.539799Z[0m [[32m[1minfo     [0m] [1mBorne verrouillée au boot (pas de véhicule)[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T20:25:03.543246Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mUnavailable[0m
+[2m2026-04-14T20:27:34.834897Z[0m [[32m[1minfo     [0m] [1mRemoteStart                   [0m [36mamps[0m=[35mNone[0m [36mconnector[0m=[35m1[0m [36mid[0m=[35mBORNE-CABANON4[0m [36msuccess[0m=[35mFalse[0m
+[2m2026-04-14T20:27:44.871460Z[0m [[32m[1minfo     [0m] [1mRemoteStart                   [0m [36mamps[0m=[35mNone[0m [36mconnector[0m=[35m1[0m [36mid[0m=[35mBORNE-CABANON4[0m [36msuccess[0m=[35mFalse[0m
+[2m2026-04-14T20:27:54.529651Z[0m [[32m[1minfo     [0m] [1mRemoteStart                   [0m [36mamps[0m=[35mNone[0m [36mconnector[0m=[35m1[0m [36mid[0m=[35mBORNE-CABANON4[0m [36msuccess[0m=[35mFalse[0m
+[2m2026-04-14T20:28:02.895916Z[0m [[32m[1minfo     [0m] [1mReset                         [0m [36mid[0m=[35mBORNE-CABANON4[0m [36msuccess[0m=[35mTrue[0m [36mtype[0m=[35mSoft[0m
+[2m2026-04-14T20:28:03.131791Z[0m [[32m[1minfo     [0m] [1mStopTransaction               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mreason[0m=[35mSoftReset[0m [36mtransaction_id[0m=[35m-1[0m
+[2m2026-04-14T20:28:03.805216Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m0[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mstatus[0m=[35mUnavailable[0m
+[2m2026-04-14T20:28:04.020375Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mstatus[0m=[35mUnavailable[0m
+[2m2026-04-14T20:29:19.764219Z[0m [[32m[1minfo     [0m] [1mReconnexion                   [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:29:19.764899Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:29:19.789212Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 55772)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T20:29:20.807662Z[0m [[32m[1minfo     [0m] [1mBootNotification              [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mmodel[0m=[35mCharge Box model[0m [36mvendor[0m=[35mTechnoVE[0m
+[2m2026-04-14T20:29:20.831522Z[0m [[32m[1minfo     [0m] [1mSessions orphelines fermées au reconnect[0m [36mcount[0m=[35m2[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:29:20.843608Z[0m [[32m[1minfo     [0m] [1mProfil fabricant calculé      [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mlocal_id_tag[0m=[35mADMIN[0m [36mmanufacturer[0m=[35mTechnoVE[0m [36mremote_start_delay[0m=[35m3.0[0m
+[2m2026-04-14T20:29:21.215033Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m0[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mstatus[0m=[35mAvailable[0m
+[2m2026-04-14T20:29:21.353514Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mstatus[0m=[35mPreparing[0m
+[2m2026-04-14T20:29:21.414296Z[0m [[32m[1minfo     [0m] [1mVéhicule détecté → démarrage polling MeterValues[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:29:21.417413Z[0m [[32m[1minfo     [0m] [1mDémarrage polling MeterValues [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:29:22.859572Z[0m [[32m[1minfo     [0m] [1mTechnoVE — SetChargingProfile différé (véhicule présent au boot)[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mstatus[0m=[35mPreparing[0m
+[2m2026-04-14T20:29:22.859804Z[0m [[32m[1minfo     [0m] [1mRemise Operative du connecteur au boot[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:29:23.634213Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:29:23.634554Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:29:23.662154Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:29:24.444825Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mstatus[0m=[35mPreparing[0m
+[2m2026-04-14T20:29:26.279810Z[0m [[32m[1minfo     [0m] [1mStatut réel connecteur après boot[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mstatus[0m=[35mPreparing[0m [36mvehicle_present[0m=[35mTrue[0m
+[2m2026-04-14T20:29:26.418780Z[0m [[32m[1minfo     [0m] [1mCréation session synthétique (charge sans StartTransaction OCPP)[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:29:26.607757Z[0m [[32m[1minfo     [0m] [1mMeasurands retenus            [0m [36mfinal[0m=[35m['Energy.Active.Import.Register', 'Power.Active.Import'][0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:29:27.256488Z[0m [[32m[1minfo     [0m] [1mConfig MeterValueSampleInterval=60[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:29:27.519795Z[0m [[32m[1minfo     [0m] [1mConfig MeterValuesSampledData=Energy.Active.Import.Register,Power.Active.Import[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:29:27.929607Z[0m [[32m[1minfo     [0m] [1mConfig HeartbeatInterval=30   [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:29:28.263952Z[0m [[32m[1minfo     [0m] [1mConfig ConnectionTimeOut=60   [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:29:28.897278Z[0m [[32m[1minfo     [0m] [1mConfig StopTransactionOnEVSideDisconnect=true[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:29:29.085545Z[0m [[32m[1minfo     [0m] [1mConfig Cst_MeterValuesInTxOnly=false[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:29:29.085767Z[0m [[32m[1minfo     [0m] [1mVéhicule détecté au boot — démarrage polling MeterValues[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:29:32.139294Z[0m [[32m[1minfo     [0m] [1mConfiguration complète récupérée[0m [36mcount[0m=[35m40[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:29:46.149943Z[0m [[32m[1minfo     [0m] [1mSendLocalList                 [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mid_tag[0m=[35mADMIN[0m [36mstatus[0m=[35mAccepted[0m
+[2m2026-04-14T20:29:49.087076Z[0m [[32m[1minfo     [0m] [1mTechnoVE — Auto-RemoteStart (véhicule présent au boot, pas de transaction)[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:29:49.618331Z[0m [[32m[1minfo     [0m] [1mTechnoVE — TxDefaultProfile pré-RemoteStart[0m [36mamps[0m=[35m24.0[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mstatus[0m=[35mAccepted[0m
+[2m2026-04-14T20:29:54.617747Z[0m [[32m[1minfo     [0m] [1mRemoteStart                   [0m [36mamps[0m=[35m24.0[0m [36mconnector[0m=[35m1[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mid_tag[0m=[35mADMIN[0m [36msuccess[0m=[35mTrue[0m
+[2m2026-04-14T20:29:54.949633Z[0m [[32m[1minfo     [0m] [1mStartTransaction              [0m [36mconnector[0m=[35m1[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mid_tag[0m=[35mADMIN[0m [36mtransaction_id[0m=[35m1[0m
+[2m2026-04-14T20:29:54.950105Z[0m [[32m[1minfo     [0m] [1mFermeture session synthétique [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:29:55.472933Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mstatus[0m=[35mCharging[0m
+[2m2026-04-14T20:34:20.091531Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 55773)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T20:34:22.688784Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:34:22.689342Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:34:22.710926Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:35:16.438759Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:35:16.439383Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:35:16.481121Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:35:20.553662Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 55774)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T20:37:02.164613Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:37:02.165074Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:37:02.198289Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:37:03.142812Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 55775)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T20:39:31.862881Z[0m [[32m[1minfo     [0m] [1mReconnexion                   [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:39:31.863243Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:39:31.887073Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 55776)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T20:39:34.646488Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:39:34.646921Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:39:34.674783Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:40:32.690145Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:40:32.690396Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:40:32.707691Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:40:35.161252Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 55777)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T20:40:57.568937Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:40:57.569272Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:40:57.590353Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:41:02.324466Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 55778)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T20:41:31.338940Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:41:31.339929Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:41:31.365162Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T20:41:37.353342Z[0m [[32m[1minfo     [0m] [1mDémarrage                     [0m [36mapi_port[0m=[35m8000[0m [36mapp[0m=[35mMon Serveur OCPP[0m [36menv[0m=[35mproduction[0m [36mocpp_port[0m=[35m9000[0m
+[2m2026-04-14T20:41:37.375498Z[0m [[32m[1minfo     [0m] [1mBase de données initialisée   [0m
+[2m2026-04-14T20:41:37.443249Z[0m [[32m[1minfo     [0m] [1mDémarrage OCPP WebSocket      [0m [36mhost[0m=[35m0.0.0.0[0m [36mport[0m=[35m9000[0m
+[2m2026-04-14T20:41:37.465356Z[0m [[32m[1minfo     [0m] [1mServeur OCPP prêt             [0m [36murl[0m=[35mws://0.0.0.0:9000/ocpp/[ID_BORNE][0m
+[2m2026-04-14T20:41:38.502998Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mVIRTUAL-001[0m [36mip[0m=[35m('127.0.0.1', 45340)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T20:41:38.506612Z[0m [[32m[1minfo     [0m] [1mBootNotification              [0m [36mid[0m=[35mVIRTUAL-001[0m [36mmodel[0m=[35mSimV1[0m [36mvendor[0m=[35mVirtual[0m
+[2m2026-04-14T20:41:38.533380Z[0m [[32m[1minfo     [0m] [1mProfil fabricant calculé      [0m [36mid[0m=[35mVIRTUAL-001[0m [36mlocal_id_tag[0m=[35mADMIN[0m [36mmanufacturer[0m=[35mVirtual[0m [36mremote_start_delay[0m=[35m1.0[0m
+[2m2026-04-14T20:41:40.353644Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 55780)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T20:41:40.558903Z[0m [[32m[1minfo     [0m] [1mRemise Operative du connecteur au boot[0m [36mid[0m=[35mVIRTUAL-001[0m

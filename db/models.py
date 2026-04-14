@@ -3,7 +3,7 @@ from datetime import datetime
 from enum import Enum as PyEnum
 from sqlalchemy import (
     Column, String, Integer, Float, Boolean,
-    DateTime, ForeignKey, Enum, Text, JSON
+    DateTime, ForeignKey, Enum, Text, JSON, UniqueConstraint
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 
@@ -96,9 +96,14 @@ class Connector(Base):
 
 class Session(Base):
     __tablename__ = "sessions"
+    # transaction_id est unique PAR borne, pas globalement.
+    # Chaque borne repart à 1 après un reboot → collision entre bornes sans cette contrainte composite.
+    __table_args__ = (
+        UniqueConstraint('charger_id', 'transaction_id', name='uq_session_charger_tx'),
+    )
 
     id             = Column(Integer, primary_key=True, autoincrement=True)
-    transaction_id = Column(Integer, unique=True, nullable=False)
+    transaction_id = Column(Integer, nullable=False)           # unique PAR charger_id (voir __table_args__)
     charger_id     = Column(String,  ForeignKey("chargers.id"), nullable=False)
     connector_id   = Column(Integer, ForeignKey("connectors.id"), nullable=False)
     id_tag         = Column(String,  nullable=False)
