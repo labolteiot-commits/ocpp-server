@@ -64,6 +64,10 @@ class Charger(Base):
     boot_lock        = Column(Boolean, default=True)   # verrouiller au démarrage
     default_max_amps = Column(Float,   nullable=True)  # courant imposé (A)
 
+    # Quirks par fabricant — None = valeur par défaut calculée automatiquement
+    remote_start_delay = Column(Float,  nullable=True)  # délai (s) entre ChangeAvailability et RemoteStart
+    local_id_tag       = Column(String, nullable=True)  # idTag pour RemoteStart et liste locale OCPP
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

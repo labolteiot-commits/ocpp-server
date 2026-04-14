@@ -10,6 +10,7 @@ from datetime import datetime
 
 from db.database import get_db
 from db.models import Charger, Session as ChargingSession, SessionStatus, MeterValue
+from core.logging import log
 
 router = APIRouter()
 
@@ -27,41 +28,47 @@ class ConnectorOut(BaseModel):
 
 
 class ChargerOut(BaseModel):
-    id:               str
-    description:      Optional[str]
-    manufacturer:     Optional[str]
-    model:            Optional[str]
-    firmware_version: Optional[str]
-    ocpp_protocol:    str
-    status:           str
-    last_heartbeat:   Optional[datetime]
-    ip_address:       Optional[str]
-    is_enabled:       bool
-    boot_lock:        bool
-    default_max_amps: Optional[float]
-    created_at:       datetime
-    connectors:       list[ConnectorOut] = []
+    id:                 str
+    description:        Optional[str]
+    manufacturer:       Optional[str]
+    model:              Optional[str]
+    firmware_version:   Optional[str]
+    ocpp_protocol:      str
+    status:             str
+    last_heartbeat:     Optional[datetime]
+    ip_address:         Optional[str]
+    is_enabled:         bool
+    boot_lock:          bool
+    default_max_amps:   Optional[float]
+    remote_start_delay: Optional[float]
+    local_id_tag:       Optional[str]
+    created_at:         datetime
+    connectors:         list[ConnectorOut] = []
 
     class Config:
         from_attributes = True
 
 
 class ChargerCreate(BaseModel):
-    id:               str
-    description:      Optional[str]   = None
-    manufacturer:     Optional[str]   = None
-    model:            Optional[str]   = None
-    auth_password:    Optional[str]   = None
-    notes:            Optional[str]   = None
-    boot_lock:        bool            = True
-    default_max_amps: Optional[float] = None
+    id:                 str
+    description:        Optional[str]   = None
+    manufacturer:       Optional[str]   = None
+    model:              Optional[str]   = None
+    auth_password:      Optional[str]   = None
+    notes:              Optional[str]   = None
+    boot_lock:          bool            = True
+    default_max_amps:   Optional[float] = None
+    remote_start_delay: Optional[float] = None  # None = détection auto par fabricant
+    local_id_tag:       Optional[str]   = None  # None = "ADMIN"
 
 
 class ChargerUpdate(BaseModel):
-    description:      Optional[str]   = None
-    is_enabled:       Optional[bool]  = None
-    boot_lock:        Optional[bool]  = None
-    default_max_amps: Optional[float] = None
+    description:        Optional[str]   = None
+    is_enabled:         Optional[bool]  = None
+    boot_lock:          Optional[bool]  = None
+    default_max_amps:   Optional[float] = None
+    remote_start_delay: Optional[float] = None
+    local_id_tag:       Optional[str]   = None
 
 
 # ─── Endpoints ───────────────────────────────────────────
@@ -93,6 +100,8 @@ async def create_charger(data: ChargerCreate, db: AsyncSession = Depends(get_db)
         notes=data.notes,
         boot_lock=data.boot_lock,
         default_max_amps=data.default_max_amps,
+        remote_start_delay=data.remote_start_delay,
+        local_id_tag=data.local_id_tag,
         status="Offline",
     )
     db.add(charger)
@@ -141,6 +150,10 @@ async def update_charger(
         charger.boot_lock = data.boot_lock
     if data.default_max_amps is not None:
         charger.default_max_amps = data.default_max_amps
+    if data.remote_start_delay is not None:
+        charger.remote_start_delay = data.remote_start_delay
+    if data.local_id_tag is not None:
+        charger.local_id_tag = data.local_id_tag
 
     await db.commit()
 
@@ -149,19 +162,51 @@ async def update_charger(
         cp = request.app.state.ocpp_server.get_charger(charger_id)
         if cp:
             cp._default_max_amps = data.default_max_amps
-            profile = {
-                "charging_profile_id":      99,
-                "stack_level":              8,
-                "charging_profile_purpose": "ChargePointMaxProfile",
-                "charging_profile_kind":    "Absolute",
-                "charging_schedule": {
-                    "charging_rate_unit": "A",
-                    "charging_schedule_period": [
-                        {"start_period": 0, "limit": data.default_max_amps}
-                    ],
-                },
-            }
-            asyncio.create_task(cp.set_charging_profile(0, profile))
+
+            if cp._is_technove:
+                # TechnoVE : TxDefaultProfile sur connector 1, stack_level=0
+                # Ne pas envoyer ChargePointMaxProfile sur connector 0 (rejeté hors transaction)
+                profile = {
+                    "charging_profile_id":      99,
+                    "stack_level":              0,
+                    "charging_profile_purpose": "TxDefaultProfile",
+                    "charging_profile_kind":    "Absolute",
+                    "charging_schedule": {
+                        "charging_rate_unit": "A",
+                        "charging_schedule_period": [
+                            {"start_period": 0, "limit": data.default_max_amps}
+                        ],
+                    },
+                }
+                asyncio.create_task(cp.set_charging_profile(1, profile))
+                log.info("TechnoVE — TxDefaultProfile mis à jour live",
+                         id=charger_id, amps=data.default_max_amps)
+            else:
+                # Comportement générique : ChargePointMaxProfile sur connector 0
+                profile = {
+                    "charging_profile_id":      99,
+                    "stack_level":              8,
+                    "charging_profile_purpose": "ChargePointMaxProfile",
+                    "charging_profile_kind":    "Absolute",
+                    "charging_schedule": {
+                        "charging_rate_unit": "A",
+                        "charging_schedule_period": [
+                            {"start_period": 0, "limit": data.default_max_amps}
+                        ],
+                    },
+                }
+                asyncio.create_task(cp.set_charging_profile(0, profile))
+
+    # Mettre à jour les valeurs runtime si la borne est connectée
+    if data.remote_start_delay is not None:
+        cp = request.app.state.ocpp_server.get_charger(charger_id)
+        if cp:
+            cp._remote_start_delay = data.remote_start_delay
+
+    if data.local_id_tag is not None:
+        cp = request.app.state.ocpp_server.get_charger(charger_id)
+        if cp:
+            cp._local_id_tag = data.local_id_tag
 
     # Recharger avec les connectors (db.refresh ne charge pas les relations)
     result = await db.execute(
@@ -186,11 +231,6 @@ async def delete_charger(charger_id: str, db: AsyncSession = Depends(get_db)):
 @router.get("/{charger_id}/stats")
 async def get_charger_stats(charger_id: str, db: AsyncSession = Depends(get_db)):
     """Statistiques en temps réel pour une borne."""
-
-    # Vérifier le statut de la borne — si offline, renvoyer métriques nulles
-    charger = await db.get(Charger, charger_id)
-    is_offline = (charger is None) or (str(charger.status) in ("Offline", "ChargerStatus.OFFLINE"))
-
     result = await db.execute(
         select(ChargingSession)
         .where(ChargingSession.charger_id == charger_id)
@@ -207,7 +247,7 @@ async def get_charger_stats(charger_id: str, db: AsyncSession = Depends(get_db))
     ) or 0
 
     last_meter = None
-    if active and not is_offline:
+    if active:
         result2 = await db.execute(
             select(MeterValue)
             .where(MeterValue.session_id == active.id)
@@ -218,9 +258,8 @@ async def get_charger_stats(charger_id: str, db: AsyncSession = Depends(get_db))
 
     return {
         "charger_id":            charger_id,
-        "is_online":             not is_offline,
-        "active_transaction_id": active.transaction_id if (active and not is_offline) else None,
-        "active_since":          active.start_time.isoformat() if (active and not is_offline) else None,
+        "active_transaction_id": active.transaction_id if active else None,
+        "active_since":          active.start_time.isoformat() if active else None,
         "current_power_w":       last_meter.power_w if last_meter else None,
         "current_energy_wh":     last_meter.energy_wh if last_meter else None,
         "session_energy_wh": (

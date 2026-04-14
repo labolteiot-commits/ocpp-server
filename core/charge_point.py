@@ -14,7 +14,7 @@ from ocpp.v16.enums import (
     DataTransferStatus,
 )
 
-from sqlalchemy import select, update, func as sa_func
+from sqlalchemy import select, update
 from db.database import AsyncSessionLocal
 from db.models import (
     Charger, Connector, Session, MeterValue, Event,
@@ -50,26 +50,21 @@ class ChargePoint(OcppChargePoint):
         self._meter_poll_task:      Optional[asyncio.Task] = None
         # ID de session synthétique (charge sans StartTransaction OCPP)
         self._synthetic_session_id: Optional[int]   = None
-
-    async def _init_transaction_id(self) -> None:
-        """Synchronise _next_transaction_id avec le max existant en DB.
-        Évite toute collision UNIQUE constraint si le serveur redémarre."""
-        try:
-            async with AsyncSessionLocal() as db:
-                max_tx = await db.scalar(
-                    select(sa_func.max(Session.transaction_id))
-                    .where(Session.transaction_id > 0)
-                )
-                if max_tx and self._next_transaction_id <= max_tx:
-                    self._next_transaction_id = max_tx + 1
-                    log.info("_next_transaction_id initialisé", id=self.id,
-                             next_id=self._next_transaction_id)
-        except Exception as e:
-            log.warning("Impossible d'initialiser transaction_id", id=self.id, error=str(e))
+        # Informations fabricant (remplies au BootNotification)
+        self._manufacturer:         Optional[str]   = None
+        self._model:                Optional[str]   = None
+        # Quirks par fabricant — peuvent être surchargés via la DB
+        self._remote_start_delay:   float           = 1.0   # délai (s) après ChangeAvailability
+        self._local_id_tag:         str             = "ADMIN"  # idTag pour RemoteStart et liste locale
 
     # ──────────────────────────────────────────────────────
     # Utilitaires
     # ──────────────────────────────────────────────────────
+
+    @property
+    def _is_technove(self) -> bool:
+        """Détecte les bornes TechnoVE pour appliquer des quirks fabricant."""
+        return "TECHNOVE" in (self._manufacturer or "").upper()
 
     async def _log_event(self, event_type: str, payload: dict) -> None:
         async with AsyncSessionLocal() as db:
@@ -177,13 +172,34 @@ class ChargePoint(OcppChargePoint):
             self._default_max_amps = charger.default_max_amps
             await db.commit()
 
+        # ── Détection fabricant et calcul des valeurs par défaut fabricant ──
+        self._manufacturer = charge_point_vendor
+        self._model        = charge_point_model
+
+        # Délai entre ChangeAvailability et RemoteStartTransaction :
+        # TechnoVE a besoin de ~3s pour traiter le changement de disponibilité.
+        # La valeur en DB surcharge toujours la valeur par défaut fabricant.
+        if charger.remote_start_delay is not None:
+            self._remote_start_delay = charger.remote_start_delay
+        elif self._is_technove:
+            self._remote_start_delay = 3.0
+        else:
+            self._remote_start_delay = 1.0
+
+        # idTag pour RemoteStart et liste locale OCPP
+        self._local_id_tag = charger.local_id_tag or "ADMIN"
+
+        log.info("Profil fabricant calculé", id=self.id,
+                 manufacturer=self._manufacturer,
+                 remote_start_delay=self._remote_start_delay,
+                 local_id_tag=self._local_id_tag)
+
         await self._log_event("BootNotification", {
             "vendor": charge_point_vendor, "model": charge_point_model, **kwargs
         })
 
         asyncio.create_task(self._post_boot_sequence())
         asyncio.create_task(self._fetch_configuration())
-        asyncio.create_task(self._init_transaction_id())
 
         return call_result.BootNotification(
             current_time=datetime.now(timezone.utc).isoformat(),
@@ -297,17 +313,6 @@ class ChargePoint(OcppChargePoint):
             await self._close_synthetic_session()
 
         async with AsyncSessionLocal() as db:
-            # Garde anti-collision UNIQUE sur transaction_id
-            max_tx = await db.scalar(
-                select(sa_func.max(Session.transaction_id)).where(Session.transaction_id > 0)
-            )
-            if max_tx and transaction_id <= max_tx:
-                transaction_id = max_tx + 1
-                self._next_transaction_id = transaction_id + 1
-                log.warning("transaction_id corrigé pour éviter collision",
-                            id=self.id, new_id=transaction_id)
-
-            # Trouver ou créer le Connector en DB (évite FK violation)
             result = await db.execute(
                 select(Connector).where(
                     Connector.charger_id   == self.id,
@@ -315,20 +320,10 @@ class ChargePoint(OcppChargePoint):
                 )
             )
             connector_db = result.scalar_one_or_none()
-            if connector_db is None:
-                connector_db = Connector(charger_id=self.id, connector_id=connector_id)
-                db.add(connector_db)
-                await db.flush()  # assigne connector_db.id sans commit
-                log.info("Connector créé à la volée dans StartTransaction",
-                         id=self.id, connector=connector_id)
-
-            # Réinitialiser le cache d'énergie pour éviter spike de puissance au démarrage
-            self._last_energy.pop(connector_id, None)
-
             session = Session(
                 transaction_id=transaction_id,
                 charger_id=self.id,
-                connector_id=connector_db.id,  # toujours la clé DB réelle
+                connector_id=connector_db.id if connector_db else connector_id,
                 id_tag=id_tag,
                 meter_start=meter_start / 1000.0,
                 start_time=datetime.fromisoformat(timestamp.replace("Z", "+00:00")),
@@ -449,11 +444,6 @@ class ChargePoint(OcppChargePoint):
                     raw=mv,
                 )
                 db.add(record)
-                # Calcul énergie livrée depuis le début de la session
-                if session_db and parsed.get("energy_wh") is not None:
-                    parsed["session_energy_wh"] = round(
-                        parsed["energy_wh"] - session_db.meter_start * 1000, 2
-                    )
                 await self.server.broadcast_meter_value(self.id, connector_id, parsed)
 
             await db.commit()
@@ -590,35 +580,55 @@ class ChargePoint(OcppChargePoint):
     async def _post_boot_sequence(self) -> None:
         await asyncio.sleep(2)
 
-        # Étape 1 : Appliquer le profil AVANT ChangeAvailability
-        # pour que la limite soit active dès le premier ampère
+        # ── Étape 1 : Profil de limite de courant ────────────────────────────
         if self._default_max_amps is not None:
-            try:
-                # ChargePointMaxProfile sur connecteur 0 = cap dur sur toute la borne
-                # Appliqué AVANT ChangeAvailability(Operative) pour que la limite
-                # soit active dès le premier ampère
-                profile = {
-                    "charging_profile_id":      99,
-                    "stack_level":              8,
-                    "charging_profile_purpose": "ChargePointMaxProfile",
-                    "charging_profile_kind":    "Absolute",
-                    "charging_schedule": {
-                        "charging_rate_unit": "A",
-                        "charging_schedule_period": [
-                            {"start_period": 0, "limit": self._default_max_amps}
-                        ],
-                    },
-                }
-                await self.call(call.SetChargingProfile(
-                    connector_id=0,
-                    cs_charging_profiles=profile,
-                ))
-                log.info("ChargePointMaxProfile appliqué AVANT Operative",
-                         id=self.id, amps=self._default_max_amps)
-            except Exception as e:
-                log.warning("SetChargingProfile boot échoué", id=self.id, error=str(e))
-    
-        # Étape 2 : Remettre Operative (efface le verrou mémorisé)
+            if self._is_technove:
+                # TechnoVE quirk :
+                # - Supporte ChargingScheduleAllowedChargingRateUnit=Current ("A") seulement
+                # - ChargePointMaxProfile sur connector 0 est parfois rejeté hors transaction
+                # - TxDefaultProfile sur connector 1 avec stack_level=0 est plus fiable
+                # - ChargeProfileMaxStackLevel=8 → pas de problème de niveau
+                profile = self._build_charging_profile(
+                    self._default_max_amps,
+                    profile_id=99,
+                    purpose="TxDefaultProfile",
+                )
+                profile["stack_level"] = 0  # niveau 0 = profil de base fiable
+                try:
+                    await self.call(call.SetChargingProfile(
+                        connector_id=1,
+                        cs_charging_profiles=profile,
+                    ))
+                    log.info("TechnoVE — TxDefaultProfile appliqué au boot",
+                             id=self.id, amps=self._default_max_amps)
+                except Exception as e:
+                    log.warning("TechnoVE — SetChargingProfile boot échoué", id=self.id, error=str(e))
+            else:
+                # Comportement générique : TxDefaultProfile sur connector 1 avec stack_level élevé,
+                # puis ChargePointMaxProfile sur connector 0 (limite globale de la borne)
+                try:
+                    profile = {
+                        "charging_profile_id":      99,
+                        "stack_level":              8,
+                        "charging_profile_purpose": "TxDefaultProfile",
+                        "charging_profile_kind":    "Absolute",
+                        "charging_schedule": {
+                            "charging_rate_unit": "A",
+                            "charging_schedule_period": [
+                                {"start_period": 0, "limit": self._default_max_amps}
+                            ],
+                        },
+                    }
+                    await self.call(call.SetChargingProfile(
+                        connector_id=1,
+                        cs_charging_profiles=profile,
+                    ))
+                    log.info("Profil max (TxDefault) appliqué AVANT Operative",
+                             id=self.id, amps=self._default_max_amps)
+                except Exception as e:
+                    log.warning("SetChargingProfile boot (TxDefault) échoué", id=self.id, error=str(e))
+
+        # ── Étape 2 : Remettre Operative ─────────────────────────────────────
         log.info("Remise Operative du connecteur au boot", id=self.id)
         try:
             await self.call(call.ChangeAvailability(
@@ -628,9 +638,9 @@ class ChargePoint(OcppChargePoint):
         except Exception as e:
             log.warning("ChangeAvailability Operative échoué", id=self.id, error=str(e))
 
-        # Étape 3 : Appliquer immédiatement le profil de charge par défaut
-        # AVANT que la borne reparte à fond
-        if self._default_max_amps is not None:
+        # ── Étape 3 : ChargePointMaxProfile — uniquement pour les bornes génériques ──
+        # TechnoVE : skippé (inutile et parfois rejeté hors transaction)
+        if self._default_max_amps is not None and not self._is_technove:
             try:
                 await self.call(call.SetChargingProfile(
                     connector_id=0,
@@ -640,12 +650,12 @@ class ChargePoint(OcppChargePoint):
                         purpose="ChargePointMaxProfile",
                     ),
                 ))
-                log.info("Profil max appliqué au boot",
+                log.info("ChargePointMaxProfile appliqué au boot",
                          id=self.id, amps=self._default_max_amps)
             except Exception as e:
-                log.warning("SetChargingProfile boot échoué", id=self.id, error=str(e))
+                log.warning("SetChargingProfile boot (ChargePointMax) échoué", id=self.id, error=str(e))
 
-        # Étape 4 : Demander le vrai statut
+        # ── Étape 4 : Demander le vrai statut ────────────────────────────────
         await asyncio.sleep(1)
         try:
             await self.call(call.TriggerMessage(
@@ -662,10 +672,16 @@ class ChargePoint(OcppChargePoint):
         log.info("Statut réel connecteur après boot",
                  id=self.id, status=real_status, vehicle_present=vehicle_present)
 
-        # Étape 5 : Configurer MeterValues
+        # ── Étape 5 : Configurer MeterValues ─────────────────────────────────
         await self._configure_meter_values()
 
-        # Étape 6 : Logique de verrouillage / polling
+        # ── Étape 6 : Peupler la liste locale OCPP (TechnoVE) ────────────────
+        # AllowOfflineTxForUnknownId=false + LocalAuthorizeOffline=true sur TechnoVE :
+        # l'idTag doit être connu localement pour éviter tout rejet lors de transactions locales.
+        if self._is_technove:
+            asyncio.create_task(self._populate_local_list())
+
+        # ── Étape 7 : Logique de verrouillage / polling ───────────────────────
         if vehicle_present:
             log.info("Véhicule détecté au boot — démarrage polling MeterValues", id=self.id)
             self._start_meter_polling()
@@ -700,8 +716,6 @@ class ChargePoint(OcppChargePoint):
             r = await self.call(call.GetConfiguration(
                 key=["MeterValuesSampledData", "MeterValuesSampledDataMaxLength"]
             ))
-            if r is None:
-                raise Exception("GetConfiguration returned None (CALLERROR)")
             max_len = len(DESIRED)
             for item in r.configuration_key or []:
                 if item["key"] == "MeterValuesSampledDataMaxLength":
@@ -758,6 +772,31 @@ class ChargePoint(OcppChargePoint):
         except Exception as e:
             log.warning("GetConfiguration échouée", id=self.id, error=str(e))
 
+    async def _populate_local_list(self) -> None:
+        """Peuple la liste locale OCPP avec l'idTag admin.
+
+        TechnoVE : LocalAuthorizeOffline=true + AllowOfflineTxForUnknownId=false.
+        L'idTag utilisé pour RemoteStart doit être connu localement pour éviter
+        tout rejet lors d'une transaction initiée localement (RFID, bouton).
+        Attendu après _fetch_configuration pour ne pas surcharger la borne au boot.
+        """
+        await asyncio.sleep(15)  # laisser _fetch_configuration se terminer d'abord
+        try:
+            response = await self.call(call.SendLocalList(
+                list_version=1,
+                update_type="Full",
+                local_authorization_list=[
+                    {
+                        "id_tag": self._local_id_tag,
+                        "id_tag_info": {"status": AuthorizationStatus.accepted},
+                    }
+                ],
+            ))
+            log.info("SendLocalList", id=self.id,
+                     id_tag=self._local_id_tag, status=response.status)
+        except Exception as e:
+            log.warning("SendLocalList échoué", id=self.id, error=str(e))
+
     # ──────────────────────────────────────────────────────
     # Commandes Serveur → Borne
     # ──────────────────────────────────────────────────────
@@ -774,10 +813,30 @@ class ChargePoint(OcppChargePoint):
                 connector_id=connector_id,
                 type=AvailabilityType.operative,
             ))
-            await asyncio.sleep(1)
+
+            # Délai calibré par fabricant : TechnoVE nécessite ~3s pour traiter
+            # le changement de disponibilité avant d'accepter RemoteStartTransaction.
+            # Les autres bornes fonctionnent généralement avec 1s.
+            await asyncio.sleep(self._remote_start_delay)
 
             if amps is not None and charging_profile is None:
-                charging_profile = self._build_charging_profile(amps)
+                if self._is_technove:
+                    # TechnoVE : utiliser TxProfile (lié à la transaction) avec stack_level=0
+                    # pour ne pas interférer avec le TxDefaultProfile permanent
+                    charging_profile = {
+                        "charging_profile_id":      100,
+                        "stack_level":              0,
+                        "charging_profile_purpose": "TxProfile",
+                        "charging_profile_kind":    "Absolute",
+                        "charging_schedule": {
+                            "charging_rate_unit": "A",
+                            "charging_schedule_period": [
+                                {"start_period": 0, "limit": amps}
+                            ],
+                        },
+                    }
+                else:
+                    charging_profile = self._build_charging_profile(amps)
                 log.info("Profil de charge appliqué", id=self.id, amps=amps)
 
             kwargs: dict = {"connector_id": connector_id, "id_tag": id_tag}
@@ -813,10 +872,6 @@ class ChargePoint(OcppChargePoint):
     async def _lock_after_stop(self) -> None:
         self._stop_meter_polling()
         await asyncio.sleep(5)
-        # Ne pas verrouiller si une nouvelle transaction a déjà démarré
-        if self._active_transactions:
-            log.info("Nouvelle session démarrée — verrouillage annulé", id=self.id)
-            return
         try:
             await self.call(call.ChangeAvailability(
                 connector_id=1,
