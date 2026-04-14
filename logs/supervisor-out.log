@@ -19770,3 +19770,111 @@
 [2m2026-04-14T15:29:11.748867Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
 [2m2026-04-14T15:29:11.763496Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
 [2m2026-04-14T15:29:31.728353Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64522)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T15:32:24.985748Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:32:24.985992Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:32:25.000409Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:33:27.008357Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64529)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T15:33:27.009605Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:33:27.009974Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:33:27.035229Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:33:37.104309Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64530)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T15:33:37.104877Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:33:37.105147Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:33:37.131334Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:34:01.505197Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64533)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T15:34:39.263393Z[0m [[32m[1minfo     [0m] [1mReconnexion                   [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:34:39.263665Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:34:39.278962Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64535)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T15:34:51.497627Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:34:51.497859Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:34:51.513302Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:35:01.739504Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:35:01.739979Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:35:01.761367Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:35:28.697530Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64538)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T15:35:38.171899Z[0m [[32m[1minfo     [0m] [1mReconnexion                   [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:35:38.172413Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:35:38.194886Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64539)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T15:35:38.343882Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:35:38.344354Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:35:38.385841Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:36:04.448996Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:36:04.449401Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:36:04.470575Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:36:27.598704Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64541)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T15:36:27.600164Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:36:27.601309Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:36:27.623262Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:36:55.094757Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64544)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T15:37:11.395844Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:37:11.396075Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:37:11.410845Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:37:12.498240Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64545)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T15:37:23.819654Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:37:23.819885Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:37:23.834771Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:37:24.986343Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64546)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T15:37:55.191228Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:37:55.192317Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:37:55.206397Z[0m [[32m[1minfo     [0m] [1mReconnexion                   [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:37:55.207595Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:37:55.218155Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:37:55.232490Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64547)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T15:38:03.695273Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:38:03.695506Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:38:03.709348Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:38:14.276424Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64548)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T15:39:16.545421Z[0m [[32m[1minfo     [0m] [1mReconnexion                   [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:39:16.545697Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:39:16.561088Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64549)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T15:39:16.587015Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:39:16.587245Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:39:16.603534Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:40:36.926619Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:40:36.927035Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:40:36.949698Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:41:00.825183Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64556)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T15:41:31.136335Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:41:31.136844Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:41:31.159529Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:42:12.695077Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64561)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T15:42:57.268363Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:42:57.268875Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:42:57.288935Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:43:25.926018Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64568)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T15:43:33.832243Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:43:33.832625Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:43:33.853665Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:43:34.970430Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64569)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T15:44:26.443776Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:44:26.444096Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:44:26.462566Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:44:26.507190Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64570)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T15:45:12.844276Z[0m [[32m[1minfo     [0m] [1mReconnexion                   [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:45:12.844883Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:45:12.868324Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64571)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T15:45:24.700932Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:45:24.701337Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:45:24.722830Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:46:33.221854Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:46:33.222269Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:46:33.244457Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T15:46:35.096283Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64573)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T16:30:48.657153Z[0m [[32m[1minfo     [0m] [1mReconnexion                   [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T16:30:48.657430Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T16:30:48.672545Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64574)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T16:30:49.184171Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T16:30:49.184859Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T16:30:49.200076Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T16:56:19.790877Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T16:56:19.791212Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T16:56:19.825698Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T16:56:22.839444Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64575)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T17:09:16.938862Z[0m [[32m[1minfo     [0m] [1mDémarrage                     [0m [36mapi_port[0m=[35m8000[0m [36mapp[0m=[35mMon Serveur OCPP[0m [36menv[0m=[35mproduction[0m [36mocpp_port[0m=[35m9000[0m
+[2m2026-04-14T17:09:16.957624Z[0m [[32m[1minfo     [0m] [1mBase de données initialisée   [0m
+[2m2026-04-14T17:09:17.048980Z[0m [[32m[1minfo     [0m] [1mDémarrage OCPP WebSocket      [0m [36mhost[0m=[35m0.0.0.0[0m [36mport[0m=[35m9000[0m
+[2m2026-04-14T17:09:17.071828Z[0m [[32m[1minfo     [0m] [1mServeur OCPP prêt             [0m [36murl[0m=[35mws://0.0.0.0:9000/ocpp/[ID_BORNE][0m
+[2m2026-04-14T17:09:18.064962Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mVIRTUAL-001[0m [36mip[0m=[35m('127.0.0.1', 47296)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T17:09:18.070048Z[0m [[32m[1minfo     [0m] [1mBootNotification              [0m [36mid[0m=[35mVIRTUAL-001[0m [36mmodel[0m=[35mSimV1[0m [36mvendor[0m=[35mVirtual[0m
+[2m2026-04-14T17:09:18.138688Z[0m [[32m[1minfo     [0m] [1m_next_transaction_id initialisé[0m [36mid[0m=[35mVIRTUAL-001[0m [36mnext_id[0m=[35m20[0m
+[2m2026-04-14T17:09:18.779027Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64576)[0m [36mprotocol[0m=[35mocpp1.6[0m

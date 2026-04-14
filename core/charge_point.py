@@ -297,7 +297,7 @@ class ChargePoint(OcppChargePoint):
             await self._close_synthetic_session()
 
         async with AsyncSessionLocal() as db:
-            # S'assurer que le transaction_id n'entre pas en collision
+            # Garde anti-collision UNIQUE sur transaction_id
             max_tx = await db.scalar(
                 select(sa_func.max(Session.transaction_id)).where(Session.transaction_id > 0)
             )
@@ -307,7 +307,7 @@ class ChargePoint(OcppChargePoint):
                 log.warning("transaction_id corrigé pour éviter collision",
                             id=self.id, new_id=transaction_id)
 
-            # Trouver ou créer le Connector en DB
+            # Trouver ou créer le Connector en DB (évite FK violation)
             result = await db.execute(
                 select(Connector).where(
                     Connector.charger_id   == self.id,
@@ -316,20 +316,19 @@ class ChargePoint(OcppChargePoint):
             )
             connector_db = result.scalar_one_or_none()
             if connector_db is None:
-                # Créer le Connector s'il n'existe pas encore
-                connector_db = Connector(
-                    charger_id=self.id,
-                    connector_id=connector_id,
-                )
+                connector_db = Connector(charger_id=self.id, connector_id=connector_id)
                 db.add(connector_db)
                 await db.flush()  # assigne connector_db.id sans commit
                 log.info("Connector créé à la volée dans StartTransaction",
                          id=self.id, connector=connector_id)
 
+            # Réinitialiser le cache d'énergie pour éviter spike de puissance au démarrage
+            self._last_energy.pop(connector_id, None)
+
             session = Session(
                 transaction_id=transaction_id,
                 charger_id=self.id,
-                connector_id=connector_db.id,   # toujours la clé DB réelle
+                connector_id=connector_db.id,  # toujours la clé DB réelle
                 id_tag=id_tag,
                 meter_start=meter_start / 1000.0,
                 start_time=datetime.fromisoformat(timestamp.replace("Z", "+00:00")),
@@ -450,7 +449,7 @@ class ChargePoint(OcppChargePoint):
                     raw=mv,
                 )
                 db.add(record)
-                # Calcul énergie session (registre cumulatif - départ session)
+                # Calcul énergie livrée depuis le début de la session
                 if session_db and parsed.get("energy_wh") is not None:
                     parsed["session_energy_wh"] = round(
                         parsed["energy_wh"] - session_db.meter_start * 1000, 2
@@ -502,15 +501,10 @@ class ChargePoint(OcppChargePoint):
             )
             connector_db = result.scalar_one_or_none()
 
-            if connector_db is None:
-                connector_db = Connector(charger_id=self.id, connector_id=1)
-                db.add(connector_db)
-                await db.flush()
-
             session = Session(
                 transaction_id=-(self._next_transaction_id),  # ID négatif = synthétique
                 charger_id=self.id,
-                connector_id=connector_db.id,  # toujours la clé DB réelle
+                connector_id=connector_db.id if connector_db else 1,
                 id_tag="LOCAL",
                 meter_start=0.0,
                 start_time=datetime.now(timezone.utc),
@@ -600,12 +594,13 @@ class ChargePoint(OcppChargePoint):
         # pour que la limite soit active dès le premier ampère
         if self._default_max_amps is not None:
             try:
-                # Profil permanent sur connecteur 0 (borne entière)
-                # stack_level=8 = priorité maximale
+                # ChargePointMaxProfile sur connecteur 0 = cap dur sur toute la borne
+                # Appliqué AVANT ChangeAvailability(Operative) pour que la limite
+                # soit active dès le premier ampère
                 profile = {
                     "charging_profile_id":      99,
                     "stack_level":              8,
-                    "charging_profile_purpose": "TxDefaultProfile",
+                    "charging_profile_purpose": "ChargePointMaxProfile",
                     "charging_profile_kind":    "Absolute",
                     "charging_schedule": {
                         "charging_rate_unit": "A",
@@ -615,10 +610,10 @@ class ChargePoint(OcppChargePoint):
                     },
                 }
                 await self.call(call.SetChargingProfile(
-                    connector_id=1,
+                    connector_id=0,
                     cs_charging_profiles=profile,
                 ))
-                log.info("Profil max permanent appliqué AVANT Operative",
+                log.info("ChargePointMaxProfile appliqué AVANT Operative",
                          id=self.id, amps=self._default_max_amps)
             except Exception as e:
                 log.warning("SetChargingProfile boot échoué", id=self.id, error=str(e))
@@ -705,6 +700,8 @@ class ChargePoint(OcppChargePoint):
             r = await self.call(call.GetConfiguration(
                 key=["MeterValuesSampledData", "MeterValuesSampledDataMaxLength"]
             ))
+            if r is None:
+                raise Exception("GetConfiguration returned None (CALLERROR)")
             max_len = len(DESIRED)
             for item in r.configuration_key or []:
                 if item["key"] == "MeterValuesSampledDataMaxLength":
@@ -816,6 +813,10 @@ class ChargePoint(OcppChargePoint):
     async def _lock_after_stop(self) -> None:
         self._stop_meter_polling()
         await asyncio.sleep(5)
+        # Ne pas verrouiller si une nouvelle transaction a déjà démarré
+        if self._active_transactions:
+            log.info("Nouvelle session démarrée — verrouillage annulé", id=self.id)
+            return
         try:
             await self.call(call.ChangeAvailability(
                 connector_id=1,

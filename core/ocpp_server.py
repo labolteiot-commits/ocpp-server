@@ -3,6 +3,7 @@ import asyncio
 import json
 import base64
 from typing import Optional
+from datetime import datetime, timezone
 import websockets
 from websockets.server import WebSocketServerProtocol
 
@@ -116,7 +117,7 @@ class OCPPServer:
             "current_a":      values.get("current_a"),
             "voltage_v":      values.get("voltage_v"),
             "soc_percent":    values.get("soc_percent"),
-            "timestamp":      __import__("datetime").datetime.utcnow().isoformat(),
+            "timestamp":      datetime.now(timezone.utc).isoformat(),
         })
 
     async def broadcast_heartbeat(self, charger_id: str, timestamp: str) -> None:

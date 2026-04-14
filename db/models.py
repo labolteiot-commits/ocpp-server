@@ -30,8 +30,6 @@ class ConnectorStatus(str, PyEnum):
     AVAILABLE      = "Available"
     PREPARING      = "Preparing"
     CHARGING       = "Charging"
-    SUSPENDED_EV   = "SuspendedEV"    # ← ajouté
-    SUSPENDED_EVSE = "SuspendedEVSE"  # ← ajouté
     FINISHING      = "Finishing"
     RESERVED       = "Reserved"
     UNAVAILABLE    = "Unavailable"
@@ -63,8 +61,8 @@ class Charger(Base):
     notes            = Column(Text,    nullable=True)
 
     # Comportement au boot
-    boot_lock        = Column(Boolean, default=True)
-    default_max_amps = Column(Float,   nullable=True)
+    boot_lock        = Column(Boolean, default=True)   # verrouiller au démarrage
+    default_max_amps = Column(Float,   nullable=True)  # courant imposé (A)
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -119,7 +117,7 @@ class MeterValue(Base):
     __tablename__ = "meter_values"
 
     id          = Column(Integer, primary_key=True, autoincrement=True)
-    session_id  = Column(Integer, ForeignKey("sessions.id"), nullable=True)
+    session_id  = Column(Integer, ForeignKey("sessions.id"), nullable=True)  # nullable: hors transaction
     timestamp   = Column(DateTime, default=datetime.utcnow)
     energy_wh   = Column(Float,  nullable=True)
     power_w     = Column(Float,  nullable=True)
