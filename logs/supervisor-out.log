@@ -19891,3 +19891,206 @@
 [2m2026-04-14T17:09:51.000535Z[0m [[32m[1minfo     [0m] [1mConfig StopTransactionOnEVSideDisconnect=true[0m [36mid[0m=[35mVIRTUAL-001[0m
 [2m2026-04-14T17:09:51.004596Z[0m [[32m[1minfo     [0m] [1mConfig Cst_MeterValuesInTxOnly=false[0m [36mid[0m=[35mVIRTUAL-001[0m
 [2m2026-04-14T17:09:51.010093Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mUnavailable[0m
+[2m2026-04-14T17:10:21.007580Z[0m [[33m[1mwarning  [0m] [1mVerrouillage boot échoué      [0m [36merror[0m=[35mWaited 30s for response on [2,"e3bed259-b9c2-48e3-9183-30c92a099048","ChangeAvailability",{"connectorId":1,"type":"Inoperative"}].[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:10:54.712340Z[0m [[32m[1minfo     [0m] [1mDémarrage                     [0m [36mapi_port[0m=[35m8000[0m [36mapp[0m=[35mMon Serveur OCPP[0m [36menv[0m=[35mproduction[0m [36mocpp_port[0m=[35m9000[0m
+[2m2026-04-14T17:10:54.768760Z[0m [[32m[1minfo     [0m] [1mBase de données initialisée   [0m
+[2m2026-04-14T17:10:54.893518Z[0m [[32m[1minfo     [0m] [1mDémarrage OCPP WebSocket      [0m [36mhost[0m=[35m0.0.0.0[0m [36mport[0m=[35m9000[0m
+[2m2026-04-14T17:10:54.932105Z[0m [[32m[1minfo     [0m] [1mServeur OCPP prêt             [0m [36murl[0m=[35mws://0.0.0.0:9000/ocpp/[ID_BORNE][0m
+[2m2026-04-14T17:10:55.990596Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mVIRTUAL-001[0m [36mip[0m=[35m('127.0.0.1', 43886)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T17:10:55.998406Z[0m [[32m[1minfo     [0m] [1mBootNotification              [0m [36mid[0m=[35mVIRTUAL-001[0m [36mmodel[0m=[35mSimV1[0m [36mvendor[0m=[35mVirtual[0m
+[2m2026-04-14T17:10:56.092212Z[0m [[32m[1minfo     [0m] [1m_next_transaction_id initialisé[0m [36mid[0m=[35mVIRTUAL-001[0m [36mnext_id[0m=[35m20[0m
+[2m2026-04-14T17:10:56.191422Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64577)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T17:11:25.965446Z[0m [[32m[1minfo     [0m] [1mChargePointMaxProfile appliqué AVANT Operative[0m [36mamps[0m=[35m24.0[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:11:25.969334Z[0m [[32m[1minfo     [0m] [1mRemise Operative du connecteur au boot[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:11:25.983956Z[0m [[32m[1minfo     [0m] [1mConfiguration complète récupérée[0m [36mcount[0m=[35m10[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:11:26.002237Z[0m [[32m[1minfo     [0m] [1mProfil max appliqué au boot   [0m [36mamps[0m=[35m24.0[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:11:29.014121Z[0m [[32m[1minfo     [0m] [1mStatut réel connecteur après boot[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mUnknown[0m [36mvehicle_present[0m=[35mFalse[0m
+[2m2026-04-14T17:11:29.021800Z[0m [[32m[1minfo     [0m] [1mMeasurands retenus            [0m [36mfinal[0m=[35m['Energy.Active.Import.Register', 'Power.Active.Import', 'Current.Import', 'Voltage', 'SoC'][0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:11:29.035538Z[0m [[32m[1minfo     [0m] [1mConfig MeterValueSampleInterval=60[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:11:29.045613Z[0m [[32m[1minfo     [0m] [1mConfig MeterValuesSampledData=Energy.Active.Import.Register,Power.Active.Import,Current.Import,Voltage,SoC[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:11:29.058140Z[0m [[32m[1minfo     [0m] [1mConfig HeartbeatInterval=30   [0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:11:29.075500Z[0m [[32m[1minfo     [0m] [1mConfig ConnectionTimeOut=60   [0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:11:29.086772Z[0m [[32m[1minfo     [0m] [1mConfig StopTransactionOnEVSideDisconnect=true[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:11:29.096832Z[0m [[32m[1minfo     [0m] [1mConfig Cst_MeterValuesInTxOnly=false[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:11:29.113491Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mUnavailable[0m
+[2m2026-04-14T17:12:00.329609Z[0m [[32m[1minfo     [0m] [1mDémarrage                     [0m [36mapi_port[0m=[35m8000[0m [36mapp[0m=[35mMon Serveur OCPP[0m [36menv[0m=[35mproduction[0m [36mocpp_port[0m=[35m9000[0m
+[2m2026-04-14T17:12:00.342314Z[0m [[32m[1minfo     [0m] [1mBase de données initialisée   [0m
+[2m2026-04-14T17:12:00.397458Z[0m [[32m[1minfo     [0m] [1mDémarrage OCPP WebSocket      [0m [36mhost[0m=[35m0.0.0.0[0m [36mport[0m=[35m9000[0m
+[2m2026-04-14T17:12:00.415564Z[0m [[32m[1minfo     [0m] [1mServeur OCPP prêt             [0m [36murl[0m=[35mws://0.0.0.0:9000/ocpp/[ID_BORNE][0m
+[2m2026-04-14T17:12:02.219766Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64578)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T17:12:04.147297Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mVIRTUAL-001[0m [36mip[0m=[35m('127.0.0.1', 44854)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T17:12:04.149453Z[0m [[32m[1minfo     [0m] [1mBootNotification              [0m [36mid[0m=[35mVIRTUAL-001[0m [36mmodel[0m=[35mSimV1[0m [36mvendor[0m=[35mVirtual[0m
+[2m2026-04-14T17:12:04.209366Z[0m [[32m[1minfo     [0m] [1m_next_transaction_id initialisé[0m [36mid[0m=[35mVIRTUAL-001[0m [36mnext_id[0m=[35m20[0m
+[2m2026-04-14T17:12:20.314873Z[0m [[32m[1minfo     [0m] [1mDémarrage                     [0m [36mapi_port[0m=[35m8000[0m [36mapp[0m=[35mMon Serveur OCPP[0m [36menv[0m=[35mproduction[0m [36mocpp_port[0m=[35m9000[0m
+[2m2026-04-14T17:12:20.330371Z[0m [[32m[1minfo     [0m] [1mBase de données initialisée   [0m
+[2m2026-04-14T17:12:20.405133Z[0m [[32m[1minfo     [0m] [1mDémarrage OCPP WebSocket      [0m [36mhost[0m=[35m0.0.0.0[0m [36mport[0m=[35m9000[0m
+[2m2026-04-14T17:12:20.426305Z[0m [[32m[1minfo     [0m] [1mServeur OCPP prêt             [0m [36murl[0m=[35mws://0.0.0.0:9000/ocpp/[ID_BORNE][0m
+[2m2026-04-14T17:12:24.358161Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64579)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T17:12:37.469724Z[0m [[32m[1minfo     [0m] [1mDémarrage                     [0m [36mapi_port[0m=[35m8000[0m [36mapp[0m=[35mMon Serveur OCPP[0m [36menv[0m=[35mproduction[0m [36mocpp_port[0m=[35m9000[0m
+[2m2026-04-14T17:12:37.531998Z[0m [[32m[1minfo     [0m] [1mBase de données initialisée   [0m
+[2m2026-04-14T17:12:37.672543Z[0m [[32m[1minfo     [0m] [1mDémarrage OCPP WebSocket      [0m [36mhost[0m=[35m0.0.0.0[0m [36mport[0m=[35m9000[0m
+[2m2026-04-14T17:12:37.717724Z[0m [[32m[1minfo     [0m] [1mServeur OCPP prêt             [0m [36murl[0m=[35mws://0.0.0.0:9000/ocpp/[ID_BORNE][0m
+[2m2026-04-14T17:12:38.902240Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64580)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T17:12:39.173445Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mVIRTUAL-001[0m [36mip[0m=[35m('127.0.0.1', 56436)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T17:12:39.182748Z[0m [[32m[1minfo     [0m] [1mBootNotification              [0m [36mid[0m=[35mVIRTUAL-001[0m [36mmodel[0m=[35mSimV1[0m [36mvendor[0m=[35mVirtual[0m
+[2m2026-04-14T17:12:39.301947Z[0m [[32m[1minfo     [0m] [1m_next_transaction_id initialisé[0m [36mid[0m=[35mVIRTUAL-001[0m [36mnext_id[0m=[35m20[0m
+[2m2026-04-14T17:13:09.175201Z[0m [[32m[1minfo     [0m] [1mChargePointMaxProfile appliqué AVANT Operative[0m [36mamps[0m=[35m24.0[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:13:09.175470Z[0m [[32m[1minfo     [0m] [1mRemise Operative du connecteur au boot[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:13:09.189657Z[0m [[32m[1minfo     [0m] [1mConfiguration complète récupérée[0m [36mcount[0m=[35m10[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:13:09.208812Z[0m [[32m[1minfo     [0m] [1mProfil max appliqué au boot   [0m [36mamps[0m=[35m24.0[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:13:12.232956Z[0m [[32m[1minfo     [0m] [1mStatut réel connecteur après boot[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mUnknown[0m [36mvehicle_present[0m=[35mFalse[0m
+[2m2026-04-14T17:13:12.244207Z[0m [[32m[1minfo     [0m] [1mMeasurands retenus            [0m [36mfinal[0m=[35m['Energy.Active.Import.Register', 'Power.Active.Import', 'Current.Import', 'Voltage', 'SoC'][0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:13:12.251855Z[0m [[32m[1minfo     [0m] [1mConfig MeterValueSampleInterval=60[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:13:12.263887Z[0m [[32m[1minfo     [0m] [1mConfig MeterValuesSampledData=Energy.Active.Import.Register,Power.Active.Import,Current.Import,Voltage,SoC[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:13:12.270939Z[0m [[32m[1minfo     [0m] [1mConfig HeartbeatInterval=30   [0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:13:12.278589Z[0m [[32m[1minfo     [0m] [1mConfig ConnectionTimeOut=60   [0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:13:12.295831Z[0m [[32m[1minfo     [0m] [1mConfig StopTransactionOnEVSideDisconnect=true[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:13:12.312324Z[0m [[32m[1minfo     [0m] [1mConfig Cst_MeterValuesInTxOnly=false[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:13:12.331960Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mUnavailable[0m
+[2m2026-04-14T17:13:34.366584Z[0m [[32m[1minfo     [0m] [1mDémarrage                     [0m [36mapi_port[0m=[35m8000[0m [36mapp[0m=[35mMon Serveur OCPP[0m [36menv[0m=[35mproduction[0m [36mocpp_port[0m=[35m9000[0m
+[2m2026-04-14T17:13:34.378615Z[0m [[32m[1minfo     [0m] [1mBase de données initialisée   [0m
+[2m2026-04-14T17:13:34.433465Z[0m [[32m[1minfo     [0m] [1mDémarrage OCPP WebSocket      [0m [36mhost[0m=[35m0.0.0.0[0m [36mport[0m=[35m9000[0m
+[2m2026-04-14T17:13:34.452249Z[0m [[32m[1minfo     [0m] [1mServeur OCPP prêt             [0m [36murl[0m=[35mws://0.0.0.0:9000/ocpp/[ID_BORNE][0m
+[2m2026-04-14T17:13:35.147773Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64581)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T17:13:47.351600Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mVIRTUAL-001[0m [36mip[0m=[35m('127.0.0.1', 41522)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T17:13:47.356018Z[0m [[32m[1minfo     [0m] [1mBootNotification              [0m [36mid[0m=[35mVIRTUAL-001[0m [36mmodel[0m=[35mSimV1[0m [36mvendor[0m=[35mVirtual[0m
+[2m2026-04-14T17:13:47.395705Z[0m [[32m[1minfo     [0m] [1m_next_transaction_id initialisé[0m [36mid[0m=[35mVIRTUAL-001[0m [36mnext_id[0m=[35m20[0m
+[2m2026-04-14T17:14:17.349785Z[0m [[32m[1minfo     [0m] [1mChargePointMaxProfile appliqué AVANT Operative[0m [36mamps[0m=[35m24.0[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:14:17.350057Z[0m [[32m[1minfo     [0m] [1mRemise Operative du connecteur au boot[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:14:17.359001Z[0m [[32m[1minfo     [0m] [1mConfiguration complète récupérée[0m [36mcount[0m=[35m10[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:14:17.370942Z[0m [[32m[1minfo     [0m] [1mProfil max appliqué au boot   [0m [36mamps[0m=[35m24.0[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:14:19.164838Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T17:14:19.165581Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T17:14:19.201517Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-GARAGE-01[0m
+[2m2026-04-14T17:14:20.379037Z[0m [[32m[1minfo     [0m] [1mStatut réel connecteur après boot[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mUnknown[0m [36mvehicle_present[0m=[35mFalse[0m
+[2m2026-04-14T17:14:20.387374Z[0m [[32m[1minfo     [0m] [1mMeasurands retenus            [0m [36mfinal[0m=[35m['Energy.Active.Import.Register', 'Power.Active.Import', 'Current.Import', 'Voltage', 'SoC'][0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:14:20.398278Z[0m [[32m[1minfo     [0m] [1mConfig MeterValueSampleInterval=60[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:14:20.404503Z[0m [[32m[1minfo     [0m] [1mConfig MeterValuesSampledData=Energy.Active.Import.Register,Power.Active.Import,Current.Import,Voltage,SoC[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:14:20.409816Z[0m [[32m[1minfo     [0m] [1mConfig HeartbeatInterval=30   [0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:14:20.419406Z[0m [[32m[1minfo     [0m] [1mConfig ConnectionTimeOut=60   [0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:14:20.426255Z[0m [[32m[1minfo     [0m] [1mConfig StopTransactionOnEVSideDisconnect=true[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:14:20.431892Z[0m [[32m[1minfo     [0m] [1mConfig Cst_MeterValuesInTxOnly=false[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:14:20.441558Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mUnavailable[0m
+[2m2026-04-14T17:14:25.320415Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64582)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T17:14:34.170456Z[0m [[32m[1minfo     [0m] [1mDémarrage                     [0m [36mapi_port[0m=[35m8000[0m [36mapp[0m=[35mMon Serveur OCPP[0m [36menv[0m=[35mproduction[0m [36mocpp_port[0m=[35m9000[0m
+[2m2026-04-14T17:14:34.188905Z[0m [[32m[1minfo     [0m] [1mBase de données initialisée   [0m
+[2m2026-04-14T17:14:34.265677Z[0m [[32m[1minfo     [0m] [1mDémarrage OCPP WebSocket      [0m [36mhost[0m=[35m0.0.0.0[0m [36mport[0m=[35m9000[0m
+[2m2026-04-14T17:14:34.288957Z[0m [[32m[1minfo     [0m] [1mServeur OCPP prêt             [0m [36murl[0m=[35mws://0.0.0.0:9000/ocpp/[ID_BORNE][0m
+[2m2026-04-14T17:14:36.220853Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64583)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T17:14:55.483679Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mVIRTUAL-001[0m [36mip[0m=[35m('127.0.0.1', 42154)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T17:14:55.488829Z[0m [[32m[1minfo     [0m] [1mBootNotification              [0m [36mid[0m=[35mVIRTUAL-001[0m [36mmodel[0m=[35mSimV1[0m [36mvendor[0m=[35mVirtual[0m
+[2m2026-04-14T17:14:55.559932Z[0m [[32m[1minfo     [0m] [1m_next_transaction_id initialisé[0m [36mid[0m=[35mVIRTUAL-001[0m [36mnext_id[0m=[35m20[0m
+[2m2026-04-14T17:15:26.712369Z[0m [[32m[1minfo     [0m] [1mDémarrage                     [0m [36mapi_port[0m=[35m8000[0m [36mapp[0m=[35mMon Serveur OCPP[0m [36menv[0m=[35mproduction[0m [36mocpp_port[0m=[35m9000[0m
+[2m2026-04-14T17:15:26.727523Z[0m [[32m[1minfo     [0m] [1mBase de données initialisée   [0m
+[2m2026-04-14T17:15:26.796489Z[0m [[32m[1minfo     [0m] [1mDémarrage OCPP WebSocket      [0m [36mhost[0m=[35m0.0.0.0[0m [36mport[0m=[35m9000[0m
+[2m2026-04-14T17:15:26.817827Z[0m [[32m[1minfo     [0m] [1mServeur OCPP prêt             [0m [36murl[0m=[35mws://0.0.0.0:9000/ocpp/[ID_BORNE][0m
+[2m2026-04-14T17:15:28.942487Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64584)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T17:15:30.504114Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mVIRTUAL-001[0m [36mip[0m=[35m('127.0.0.1', 57898)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T17:15:30.512794Z[0m [[32m[1minfo     [0m] [1mBootNotification              [0m [36mid[0m=[35mVIRTUAL-001[0m [36mmodel[0m=[35mSimV1[0m [36mvendor[0m=[35mVirtual[0m
+[2m2026-04-14T17:15:30.567263Z[0m [[32m[1minfo     [0m] [1m_next_transaction_id initialisé[0m [36mid[0m=[35mVIRTUAL-001[0m [36mnext_id[0m=[35m20[0m
+[2m2026-04-14T17:15:57.611767Z[0m [[32m[1minfo     [0m] [1mDémarrage                     [0m [36mapi_port[0m=[35m8000[0m [36mapp[0m=[35mMon Serveur OCPP[0m [36menv[0m=[35mproduction[0m [36mocpp_port[0m=[35m9000[0m
+[2m2026-04-14T17:15:57.629076Z[0m [[32m[1minfo     [0m] [1mBase de données initialisée   [0m
+[2m2026-04-14T17:15:57.700072Z[0m [[32m[1minfo     [0m] [1mDémarrage OCPP WebSocket      [0m [36mhost[0m=[35m0.0.0.0[0m [36mport[0m=[35m9000[0m
+[2m2026-04-14T17:15:57.722566Z[0m [[32m[1minfo     [0m] [1mServeur OCPP prêt             [0m [36murl[0m=[35mws://0.0.0.0:9000/ocpp/[ID_BORNE][0m
+[2m2026-04-14T17:15:59.380488Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64585)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T17:16:05.533298Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mVIRTUAL-001[0m [36mip[0m=[35m('127.0.0.1', 43814)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T17:16:05.537970Z[0m [[32m[1minfo     [0m] [1mBootNotification              [0m [36mid[0m=[35mVIRTUAL-001[0m [36mmodel[0m=[35mSimV1[0m [36mvendor[0m=[35mVirtual[0m
+[2m2026-04-14T17:16:05.593944Z[0m [[32m[1minfo     [0m] [1m_next_transaction_id initialisé[0m [36mid[0m=[35mVIRTUAL-001[0m [36mnext_id[0m=[35m20[0m
+[2m2026-04-14T17:16:35.528617Z[0m [[32m[1minfo     [0m] [1mChargePointMaxProfile appliqué AVANT Operative[0m [36mamps[0m=[35m24.0[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:16:35.530159Z[0m [[32m[1minfo     [0m] [1mRemise Operative du connecteur au boot[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:16:35.549409Z[0m [[32m[1minfo     [0m] [1mConfiguration complète récupérée[0m [36mcount[0m=[35m10[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:16:35.573222Z[0m [[32m[1minfo     [0m] [1mProfil max appliqué au boot   [0m [36mamps[0m=[35m24.0[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:16:38.579787Z[0m [[32m[1minfo     [0m] [1mStatut réel connecteur après boot[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mUnknown[0m [36mvehicle_present[0m=[35mFalse[0m
+[2m2026-04-14T17:16:38.584089Z[0m [[32m[1minfo     [0m] [1mMeasurands retenus            [0m [36mfinal[0m=[35m['Energy.Active.Import.Register', 'Power.Active.Import', 'Current.Import', 'Voltage', 'SoC'][0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:16:38.592203Z[0m [[32m[1minfo     [0m] [1mConfig MeterValueSampleInterval=60[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:16:38.596546Z[0m [[32m[1minfo     [0m] [1mConfig MeterValuesSampledData=Energy.Active.Import.Register,Power.Active.Import,Current.Import,Voltage,SoC[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:16:38.601471Z[0m [[32m[1minfo     [0m] [1mConfig HeartbeatInterval=30   [0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:16:38.607698Z[0m [[32m[1minfo     [0m] [1mConfig ConnectionTimeOut=60   [0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:16:38.613262Z[0m [[32m[1minfo     [0m] [1mConfig StopTransactionOnEVSideDisconnect=true[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:16:38.618763Z[0m [[32m[1minfo     [0m] [1mConfig Cst_MeterValuesInTxOnly=false[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:16:38.626296Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mUnavailable[0m
+[2m2026-04-14T17:17:08.623968Z[0m [[33m[1mwarning  [0m] [1mVerrouillage boot échoué      [0m [36merror[0m=[35mWaited 30s for response on [2,"cb288f6f-7dbf-4250-b1e5-63d683898ee1","ChangeAvailability",{"connectorId":1,"type":"Inoperative"}].[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:21:25.057098Z[0m [[32m[1minfo     [0m] [1mDémarrage                     [0m [36mapi_port[0m=[35m8000[0m [36mapp[0m=[35mMon Serveur OCPP[0m [36menv[0m=[35mproduction[0m [36mocpp_port[0m=[35m9000[0m
+[2m2026-04-14T17:21:25.069676Z[0m [[32m[1minfo     [0m] [1mBase de données initialisée   [0m
+[2m2026-04-14T17:21:25.126658Z[0m [[32m[1minfo     [0m] [1mDémarrage OCPP WebSocket      [0m [36mhost[0m=[35m0.0.0.0[0m [36mport[0m=[35m9000[0m
+[2m2026-04-14T17:21:25.144951Z[0m [[32m[1minfo     [0m] [1mServeur OCPP prêt             [0m [36murl[0m=[35mws://0.0.0.0:9000/ocpp/[ID_BORNE][0m
+[2m2026-04-14T17:21:26.588020Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mVIRTUAL-001[0m [36mip[0m=[35m('127.0.0.1', 47930)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T17:21:26.591225Z[0m [[32m[1minfo     [0m] [1mBootNotification              [0m [36mid[0m=[35mVIRTUAL-001[0m [36mmodel[0m=[35mSimV1[0m [36mvendor[0m=[35mVirtual[0m
+[2m2026-04-14T17:21:26.629629Z[0m [[32m[1minfo     [0m] [1m_next_transaction_id initialisé[0m [36mid[0m=[35mVIRTUAL-001[0m [36mnext_id[0m=[35m20[0m
+[2m2026-04-14T17:21:27.126894Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64586)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T17:21:39.160543Z[0m [[32m[1minfo     [0m] [1mDémarrage                     [0m [36mapi_port[0m=[35m8000[0m [36mapp[0m=[35mMon Serveur OCPP[0m [36menv[0m=[35mproduction[0m [36mocpp_port[0m=[35m9000[0m
+[2m2026-04-14T17:21:39.172726Z[0m [[32m[1minfo     [0m] [1mBase de données initialisée   [0m
+[2m2026-04-14T17:21:39.227143Z[0m [[32m[1minfo     [0m] [1mDémarrage OCPP WebSocket      [0m [36mhost[0m=[35m0.0.0.0[0m [36mport[0m=[35m9000[0m
+[2m2026-04-14T17:21:39.245318Z[0m [[32m[1minfo     [0m] [1mServeur OCPP prêt             [0m [36murl[0m=[35mws://0.0.0.0:9000/ocpp/[ID_BORNE][0m
+[2m2026-04-14T17:21:41.155458Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64587)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T17:21:46.123131Z[0m [[32m[1minfo     [0m] [1mDémarrage                     [0m [36mapi_port[0m=[35m8000[0m [36mapp[0m=[35mMon Serveur OCPP[0m [36menv[0m=[35mproduction[0m [36mocpp_port[0m=[35m9000[0m
+[2m2026-04-14T17:21:46.136905Z[0m [[32m[1minfo     [0m] [1mBase de données initialisée   [0m
+[2m2026-04-14T17:21:46.191239Z[0m [[32m[1minfo     [0m] [1mDémarrage OCPP WebSocket      [0m [36mhost[0m=[35m0.0.0.0[0m [36mport[0m=[35m9000[0m
+[2m2026-04-14T17:21:46.211143Z[0m [[32m[1minfo     [0m] [1mServeur OCPP prêt             [0m [36murl[0m=[35mws://0.0.0.0:9000/ocpp/[ID_BORNE][0m
+[2m2026-04-14T17:21:47.898410Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64588)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T17:21:53.198445Z[0m [[32m[1minfo     [0m] [1mDémarrage                     [0m [36mapi_port[0m=[35m8000[0m [36mapp[0m=[35mMon Serveur OCPP[0m [36menv[0m=[35mproduction[0m [36mocpp_port[0m=[35m9000[0m
+[2m2026-04-14T17:21:53.214562Z[0m [[32m[1minfo     [0m] [1mBase de données initialisée   [0m
+[2m2026-04-14T17:21:53.275792Z[0m [[32m[1minfo     [0m] [1mDémarrage OCPP WebSocket      [0m [36mhost[0m=[35m0.0.0.0[0m [36mport[0m=[35m9000[0m
+[2m2026-04-14T17:21:53.294476Z[0m [[32m[1minfo     [0m] [1mServeur OCPP prêt             [0m [36murl[0m=[35mws://0.0.0.0:9000/ocpp/[ID_BORNE][0m
+[2m2026-04-14T17:21:55.311796Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64589)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T17:22:01.539638Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mVIRTUAL-001[0m [36mip[0m=[35m('127.0.0.1', 52258)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T17:22:01.543001Z[0m [[32m[1minfo     [0m] [1mBootNotification              [0m [36mid[0m=[35mVIRTUAL-001[0m [36mmodel[0m=[35mSimV1[0m [36mvendor[0m=[35mVirtual[0m
+[2m2026-04-14T17:22:01.581277Z[0m [[32m[1minfo     [0m] [1m_next_transaction_id initialisé[0m [36mid[0m=[35mVIRTUAL-001[0m [36mnext_id[0m=[35m20[0m
+[2m2026-04-14T17:22:31.535767Z[0m [[32m[1minfo     [0m] [1mChargePointMaxProfile appliqué AVANT Operative[0m [36mamps[0m=[35m24.0[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:22:31.536056Z[0m [[32m[1minfo     [0m] [1mRemise Operative du connecteur au boot[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:22:31.558775Z[0m [[32m[1minfo     [0m] [1mConfiguration complète récupérée[0m [36mcount[0m=[35m10[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:22:31.576338Z[0m [[32m[1minfo     [0m] [1mProfil max appliqué au boot   [0m [36mamps[0m=[35m24.0[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:22:34.585346Z[0m [[32m[1minfo     [0m] [1mStatut réel connecteur après boot[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mUnknown[0m [36mvehicle_present[0m=[35mFalse[0m
+[2m2026-04-14T17:22:34.590964Z[0m [[32m[1minfo     [0m] [1mMeasurands retenus            [0m [36mfinal[0m=[35m['Energy.Active.Import.Register', 'Power.Active.Import', 'Current.Import', 'Voltage', 'SoC'][0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:22:34.599520Z[0m [[32m[1minfo     [0m] [1mConfig MeterValueSampleInterval=60[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:22:34.605459Z[0m [[32m[1minfo     [0m] [1mConfig MeterValuesSampledData=Energy.Active.Import.Register,Power.Active.Import,Current.Import,Voltage,SoC[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:22:34.611851Z[0m [[32m[1minfo     [0m] [1mConfig HeartbeatInterval=30   [0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:22:34.618114Z[0m [[32m[1minfo     [0m] [1mConfig ConnectionTimeOut=60   [0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:22:34.624829Z[0m [[32m[1minfo     [0m] [1mConfig StopTransactionOnEVSideDisconnect=true[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:22:34.638881Z[0m [[32m[1minfo     [0m] [1mConfig Cst_MeterValuesInTxOnly=false[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:22:34.648054Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mUnavailable[0m
+[2m2026-04-14T17:23:04.643384Z[0m [[33m[1mwarning  [0m] [1mVerrouillage boot échoué      [0m [36merror[0m=[35mWaited 30s for response on [2,"86df6a80-0250-4c41-88a2-6ccc6976ab48","ChangeAvailability",{"connectorId":1,"type":"Inoperative"}].[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:32:48.599747Z[0m [[32m[1minfo     [0m] [1mDémarrage                     [0m [36mapi_port[0m=[35m8000[0m [36mapp[0m=[35mMon Serveur OCPP[0m [36menv[0m=[35mproduction[0m [36mocpp_port[0m=[35m9000[0m
+[2m2026-04-14T17:32:48.672410Z[0m [[32m[1minfo     [0m] [1mBase de données initialisée   [0m
+[2m2026-04-14T17:32:48.729990Z[0m [[32m[1minfo     [0m] [1mDémarrage OCPP WebSocket      [0m [36mhost[0m=[35m0.0.0.0[0m [36mport[0m=[35m9000[0m
+[2m2026-04-14T17:32:48.748395Z[0m [[32m[1minfo     [0m] [1mServeur OCPP prêt             [0m [36murl[0m=[35mws://0.0.0.0:9000/ocpp/[ID_BORNE][0m
+[2m2026-04-14T17:32:50.622154Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mVIRTUAL-001[0m [36mip[0m=[35m('127.0.0.1', 60158)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T17:32:50.631269Z[0m [[32m[1minfo     [0m] [1mBootNotification              [0m [36mid[0m=[35mVIRTUAL-001[0m [36mmodel[0m=[35mSimV1[0m [36mvendor[0m=[35mVirtual[0m
+[2m2026-04-14T17:32:50.662797Z[0m [[32m[1minfo     [0m] [1mNouvelle borne enregistrée    [0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:32:50.899431Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-GARAGE-01[0m [36mip[0m=[35m('192.168.1.235', 64590)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T17:32:52.911046Z[0m [[32m[1minfo     [0m] [1mRemise Operative du connecteur au boot[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:33:20.432073Z[0m [[32m[1minfo     [0m] [1mConfiguration complète récupérée[0m [36mcount[0m=[35m10[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:33:23.435384Z[0m [[32m[1minfo     [0m] [1mStatut réel connecteur après boot[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mUnknown[0m [36mvehicle_present[0m=[35mFalse[0m
+[2m2026-04-14T17:33:23.440234Z[0m [[32m[1minfo     [0m] [1mMeasurands retenus            [0m [36mfinal[0m=[35m['Energy.Active.Import.Register', 'Power.Active.Import', 'Current.Import', 'Voltage', 'SoC'][0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:33:23.447542Z[0m [[32m[1minfo     [0m] [1mConfig MeterValueSampleInterval=60[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:33:23.452339Z[0m [[32m[1minfo     [0m] [1mConfig MeterValuesSampledData=Energy.Active.Import.Register,Power.Active.Import,Current.Import,Voltage,SoC[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:33:23.459232Z[0m [[32m[1minfo     [0m] [1mConfig HeartbeatInterval=30   [0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:33:23.464745Z[0m [[32m[1minfo     [0m] [1mConfig ConnectionTimeOut=60   [0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:33:23.476287Z[0m [[32m[1minfo     [0m] [1mConfig StopTransactionOnEVSideDisconnect=true[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:33:23.484197Z[0m [[32m[1minfo     [0m] [1mConfig Cst_MeterValuesInTxOnly=false[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:33:23.489690Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mUnavailable[0m
+[2m2026-04-14T17:33:53.488016Z[0m [[33m[1mwarning  [0m] [1mVerrouillage boot échoué      [0m [36merror[0m=[35mWaited 30s for response on [2,"e2306faa-277b-448a-baf3-6cdcefe9e437","ChangeAvailability",{"connectorId":1,"type":"Inoperative"}].[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:34:18.696552Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mAvailable[0m
+[2m2026-04-14T17:34:20.975725Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mPreparing[0m
+[2m2026-04-14T17:34:21.024422Z[0m [[32m[1minfo     [0m] [1mVéhicule détecté → démarrage polling MeterValues[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:34:21.027269Z[0m [[32m[1minfo     [0m] [1mDémarrage polling MeterValues [0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:34:26.029019Z[0m [[32m[1minfo     [0m] [1mCréation session synthétique (charge sans StartTransaction OCPP)[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:40:48.853433Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m1000[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:40:48.853684Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:40:48.883061Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:40:51.899284Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mVIRTUAL-001[0m [36mip[0m=[35m('127.0.0.1', 48354)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T17:40:51.900488Z[0m [[32m[1minfo     [0m] [1mBootNotification              [0m [36mid[0m=[35mVIRTUAL-001[0m [36mmodel[0m=[35mSimV1[0m [36mvendor[0m=[35mVirtual[0m
+[2m2026-04-14T17:40:53.933358Z[0m [[32m[1minfo     [0m] [1mRemise Operative du connecteur au boot[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:41:21.910373Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mAvailable[0m
+[2m2026-04-14T17:41:21.951603Z[0m [[32m[1minfo     [0m] [1mConfiguration complète récupérée[0m [36mcount[0m=[35m10[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:41:23.220553Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mAvailable[0m
+[2m2026-04-14T17:41:24.916996Z[0m [[32m[1minfo     [0m] [1mStatut réel connecteur après boot[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mAvailable[0m [36mvehicle_present[0m=[35mFalse[0m
+[2m2026-04-14T17:41:24.933862Z[0m [[32m[1minfo     [0m] [1mMeasurands retenus            [0m [36mfinal[0m=[35m['Energy.Active.Import.Register', 'Power.Active.Import', 'Current.Import', 'Voltage', 'SoC'][0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:41:24.957773Z[0m [[32m[1minfo     [0m] [1mConfig MeterValueSampleInterval=60[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:41:24.978803Z[0m [[32m[1minfo     [0m] [1mConfig MeterValuesSampledData=Energy.Active.Import.Register,Power.Active.Import,Current.Import,Voltage,SoC[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:41:24.993698Z[0m [[32m[1minfo     [0m] [1mConfig HeartbeatInterval=30   [0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:41:25.009508Z[0m [[32m[1minfo     [0m] [1mConfig ConnectionTimeOut=60   [0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:41:25.027634Z[0m [[32m[1minfo     [0m] [1mConfig StopTransactionOnEVSideDisconnect=true[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:41:25.047515Z[0m [[32m[1minfo     [0m] [1mConfig Cst_MeterValuesInTxOnly=false[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:41:25.067353Z[0m [[32m[1minfo     [0m] [1mBorne verrouillée au boot (pas de véhicule)[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T17:41:25.070863Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mUnavailable[0m

@@ -347,11 +347,14 @@ async def _set_status(status: str, connector_id: int = 1):
                    "error_code": "NoError", "status": status}
         sim.log("→ sent", "StatusNotification", payload)
         try:
-            await sim._cp.call(call.StatusNotification(
+            # create_task évite le deadlock quand appelé depuis un @on() handler.
+            # cp.call() nécessite que start() soit libre pour recevoir la réponse,
+            # mais start() attend que le handler retourne → deadlock sans create_task.
+            asyncio.create_task(sim._cp.call(call.StatusNotification(
                 connector_id=connector_id,
                 error_code="NoError",
                 status=status,
-            ))
+            )))
         except Exception:
             pass
     await sim.broadcast()
@@ -389,10 +392,10 @@ async def _start_transaction(id_tag: str = "LOCAL"):
             meter_start=int(sim.meter_wh),
             timestamp=sim.session_start.isoformat(),
         ))
-        # ocpp==1.0.0 retourne None pour un CALLERROR au lieu de lever une exception
+        # ocpp==1.0.0 retourne None sur CALLERROR au lieu de lever une exception
         if resp is None:
             sim.log("✗ error", "StartTransaction", {
-                "error": "Pas de réponse (CALLERROR serveur) — vérifier les logs serveur"
+                "error": "Pas de réponse (CALLERROR) — vérifier les logs serveur"
             })
             return
         sim.transaction_id = resp.transaction_id
@@ -537,11 +540,11 @@ async def _send_meter_values():
         "soc_pct":   round(sim.soc_pct, 1),
     })
     try:
-        await sim._cp.call(call.MeterValues(
-            connector_id=1,
-            transaction_id=sim.transaction_id,
-            meter_value=meter_value,
-        ))
+        # transaction_id est optionnel — ne pas l'inclure si None
+        mv_kwargs: dict = {"connector_id": 1, "meter_value": meter_value}
+        if sim.transaction_id is not None:
+            mv_kwargs["transaction_id"] = sim.transaction_id
+        await sim._cp.call(call.MeterValues(**mv_kwargs))
     except Exception as e:
         sim.log("✗ error", "MeterValues", {"error": str(e)})
 
@@ -565,7 +568,8 @@ async def _send_triggered(message: str, connector_id: Optional[int]):
     if not sim._cp:
         return
     try:
-        if message == "MeterValues" and sim.transaction_id:
+        if message == "MeterValues":
+            # Envoyer même sans transaction active (ex: polling synthétique)
             await _send_meter_values()
         elif message == "StatusNotification":
             cid = connector_id or 1
