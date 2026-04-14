@@ -15,6 +15,7 @@ from ocpp.v16.enums import (
 )
 
 from sqlalchemy import select, update
+from sqlalchemy import func as sa_func
 from db.database import AsyncSessionLocal
 from db.models import (
     Charger, Connector, Session, MeterValue, Event,
@@ -56,6 +57,8 @@ class ChargePoint(OcppChargePoint):
         # Quirks par fabricant — peuvent être surchargés via la DB
         self._remote_start_delay:   float           = 1.0   # délai (s) après ChangeAvailability
         self._local_id_tag:         str             = "ADMIN"  # idTag pour RemoteStart et liste locale
+        # Tâches de boot trackées — annulées à chaque déconnexion pour éviter les zombies
+        self._boot_tasks:           set[asyncio.Task] = set()
 
     # ──────────────────────────────────────────────────────
     # Utilitaires
@@ -65,6 +68,22 @@ class ChargePoint(OcppChargePoint):
     def _is_technove(self) -> bool:
         """Détecte les bornes TechnoVE pour appliquer des quirks fabricant."""
         return "TECHNOVE" in (self._manufacturer or "").upper()
+
+    def _add_task(self, coro) -> asyncio.Task:
+        """Crée une tâche trackée qui se supprime automatiquement à la fin.
+        Toutes les tâches créées via cette méthode sont annulées sur déconnexion.
+        """
+        task = asyncio.create_task(coro)
+        self._boot_tasks.add(task)
+        task.add_done_callback(self._boot_tasks.discard)
+        return task
+
+    def _cancel_boot_tasks(self) -> None:
+        """Annule toutes les tâches de boot en cours (évite les zombies après déconnexion)."""
+        for task in list(self._boot_tasks):
+            if not task.done():
+                task.cancel()
+        self._boot_tasks.clear()
 
     async def _log_event(self, event_type: str, payload: dict) -> None:
         async with AsyncSessionLocal() as db:
@@ -145,6 +164,11 @@ class ChargePoint(OcppChargePoint):
         log.info("BootNotification", id=self.id,
                  vendor=charge_point_vendor, model=charge_point_model)
 
+        # ── Annuler les tâches de boot en cours (reconnexion rapide sans close propre) ──
+        # Sans ça, les tâches du boot précédent continuent sur le vieux WebSocket mort
+        # et causent des warnings "no close frame" + race conditions.
+        self._cancel_boot_tasks()
+
         async with AsyncSessionLocal() as db:
             charger = await db.get(Charger, self.id)
             if charger is None:
@@ -172,13 +196,34 @@ class ChargePoint(OcppChargePoint):
             self._default_max_amps = charger.default_max_amps
             await db.commit()
 
+        # ── Fermer les sessions ACTIVE orphelines (déconnexion brutale précédente) ──
+        # Sans ça, la session synthétique transaction_id=-1 reste ACTIVE en DB et
+        # provoque un UNIQUE constraint quand la borne reconnecte et en crée une nouvelle.
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(Session).where(
+                    Session.charger_id == self.id,
+                    Session.status     == SessionStatus.ACTIVE,
+                )
+            )
+            orphans = result.scalars().all()
+            for s in orphans:
+                s.status      = SessionStatus.COMPLETED
+                s.stop_time   = datetime.now(timezone.utc)
+                s.stop_reason = "PowerLoss"
+            if orphans:
+                log.info("Sessions orphelines fermées au reconnect",
+                         id=self.id, count=len(orphans))
+            await db.commit()
+
+        # Réinitialiser l'état de session synthétique (nouvelle connexion = état neuf)
+        self._synthetic_session_id = None
+
         # ── Détection fabricant et calcul des valeurs par défaut fabricant ──
         self._manufacturer = charge_point_vendor
         self._model        = charge_point_model
 
-        # Délai entre ChangeAvailability et RemoteStartTransaction :
-        # TechnoVE a besoin de ~3s pour traiter le changement de disponibilité.
-        # La valeur en DB surcharge toujours la valeur par défaut fabricant.
+        # Délai entre ChangeAvailability et RemoteStartTransaction
         if charger.remote_start_delay is not None:
             self._remote_start_delay = charger.remote_start_delay
         elif self._is_technove:
@@ -186,7 +231,6 @@ class ChargePoint(OcppChargePoint):
         else:
             self._remote_start_delay = 1.0
 
-        # idTag pour RemoteStart et liste locale OCPP
         self._local_id_tag = charger.local_id_tag or "ADMIN"
 
         log.info("Profil fabricant calculé", id=self.id,
@@ -198,8 +242,10 @@ class ChargePoint(OcppChargePoint):
             "vendor": charge_point_vendor, "model": charge_point_model, **kwargs
         })
 
-        asyncio.create_task(self._post_boot_sequence())
-        asyncio.create_task(self._fetch_configuration())
+        # Créer les tâches de boot via _add_task() pour qu'elles soient trackées
+        # et annulées automatiquement à la prochaine déconnexion.
+        self._add_task(self._post_boot_sequence())
+        self._add_task(self._fetch_configuration())
 
         return call_result.BootNotification(
             current_time=datetime.now(timezone.utc).isoformat(),
@@ -491,8 +537,17 @@ class ChargePoint(OcppChargePoint):
             )
             connector_db = result.scalar_one_or_none()
 
+            # Générer un ID négatif unique : min(transaction_id existant) - 1
+            # Évite le UNIQUE constraint quand la borne reconnecte plusieurs fois
+            # (sans ça, -(self._next_transaction_id) vaut toujours -1 sur chaque reconnect)
+            min_result = await db.execute(
+                select(sa_func.min(Session.transaction_id))
+            )
+            min_tx = min_result.scalar_one_or_none()
+            synthetic_tx_id = (min_tx - 1) if (min_tx is not None and min_tx < 0) else -1
+
             session = Session(
-                transaction_id=-(self._next_transaction_id),  # ID négatif = synthétique
+                transaction_id=synthetic_tx_id,
                 charger_id=self.id,
                 connector_id=connector_db.id if connector_db else 1,
                 id_tag="LOCAL",
@@ -500,14 +555,13 @@ class ChargePoint(OcppChargePoint):
                 start_time=datetime.now(timezone.utc),
                 status=SessionStatus.ACTIVE,
             )
-            self._next_transaction_id += 1
             db.add(session)
             await db.commit()
             await db.refresh(session)
             self._synthetic_session_id = session.id
 
         await self.server.broadcast_transaction(self.id, "start", {
-            "transaction_id": -(self._next_transaction_id - 1),
+            "transaction_id": synthetic_tx_id,
             "connector_id":   1,
             "id_tag":         "LOCAL",
             "meter_start":    0,
@@ -585,27 +639,34 @@ class ChargePoint(OcppChargePoint):
             if self._is_technove:
                 # TechnoVE quirk :
                 # - Supporte ChargingScheduleAllowedChargingRateUnit=Current ("A") seulement
-                # - ChargePointMaxProfile sur connector 0 est parfois rejeté hors transaction
-                # - TxDefaultProfile sur connector 1 avec stack_level=0 est plus fiable
-                # - ChargeProfileMaxStackLevel=8 → pas de problème de niveau
-                profile = self._build_charging_profile(
-                    self._default_max_amps,
-                    profile_id=99,
-                    purpose="TxDefaultProfile",
-                )
-                profile["stack_level"] = 0  # niveau 0 = profil de base fiable
-                try:
-                    await self.call(call.SetChargingProfile(
-                        connector_id=1,
-                        cs_charging_profiles=profile,
-                    ))
-                    log.info("TechnoVE — TxDefaultProfile appliqué au boot",
-                             id=self.id, amps=self._default_max_amps)
-                except Exception as e:
-                    log.warning("TechnoVE — SetChargingProfile boot échoué", id=self.id, error=str(e))
+                # - SetChargingProfile pendant un état "Preparing" (véhicule branché au boot)
+                #   ne reçoit jamais de réponse → timeout 30s → déconnexion en cascade.
+                # - On diffère l'application du profil : il sera envoyé après que le statut
+                #   soit stable, ou lors d'un RemoteStart (via charging_profile).
+                # - Si le connecteur est Available (pas de véhicule), on peut tenter le profil.
+                current_status = self._connector1_status
+                if current_status in VEHICLE_PRESENT_STATUSES:
+                    log.info("TechnoVE — SetChargingProfile différé (véhicule présent au boot)",
+                             id=self.id, status=current_status)
+                else:
+                    profile = self._build_charging_profile(
+                        self._default_max_amps,
+                        profile_id=99,
+                        purpose="TxDefaultProfile",
+                    )
+                    profile["stack_level"] = 0
+                    try:
+                        await self.call(call.SetChargingProfile(
+                            connector_id=1,
+                            cs_charging_profiles=profile,
+                        ))
+                        log.info("TechnoVE — TxDefaultProfile appliqué au boot",
+                                 id=self.id, amps=self._default_max_amps)
+                    except Exception as e:
+                        log.warning("TechnoVE — SetChargingProfile boot échoué",
+                                    id=self.id, error=str(e))
             else:
-                # Comportement générique : TxDefaultProfile sur connector 1 avec stack_level élevé,
-                # puis ChargePointMaxProfile sur connector 0 (limite globale de la borne)
+                # Comportement générique : TxDefaultProfile sur connector 1 avec stack_level élevé
                 try:
                     profile = {
                         "charging_profile_id":      99,
@@ -679,7 +740,7 @@ class ChargePoint(OcppChargePoint):
         # AllowOfflineTxForUnknownId=false + LocalAuthorizeOffline=true sur TechnoVE :
         # l'idTag doit être connu localement pour éviter tout rejet lors de transactions locales.
         if self._is_technove:
-            asyncio.create_task(self._populate_local_list())
+            self._add_task(self._populate_local_list())
 
         # ── Étape 7 : Logique de verrouillage / polling ───────────────────────
         if vehicle_present:
@@ -1139,6 +1200,10 @@ class ChargePoint(OcppChargePoint):
 
     async def on_disconnect(self) -> None:
         log.info("Borne déconnectée", id=self.id)
+        # Annuler toutes les tâches de boot (post_boot_sequence, fetch_configuration,
+        # populate_local_list, etc.) pour éviter qu'elles tournent comme zombies
+        # sur le WebSocket mort et génèrent des erreurs ou races lors du reconnect.
+        self._cancel_boot_tasks()
         self._stop_meter_polling()
         async with AsyncSessionLocal() as db:
             await db.execute(

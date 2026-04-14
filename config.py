@@ -2,6 +2,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 from pathlib import Path
+from typing import Optional
 
 BASE_DIR = Path(__file__).parent
 
@@ -10,8 +11,12 @@ class OCPPSettings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 9000
     ws_path: str = "/ocpp"
-    ping_interval: int = 30          # secondes
-    ping_timeout: int = 10
+    # ping_interval=None : désactive les WebSocket pings côté serveur.
+    # La TechnoVE (et beaucoup de bornes résidentielles) ne répond pas aux WS pings
+    # pendant le traitement de commandes, causant des déconnexions 1011 prématurées.
+    # Le keepalive est assuré par OCPP Heartbeat (interval=30s, côté borne).
+    ping_interval: Optional[int] = None
+    ping_timeout:  int = 60
     supported_protocols: list[str] = ["ocpp1.6", "ocpp2.0.1"]
 
 

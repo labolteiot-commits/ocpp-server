@@ -20204,3 +20204,154 @@
 [2m2026-04-14T19:16:38.350781Z[0m [[31m[1merror    [0m] [1mRemoteStart échoué            [0m [36merror[0m=[35m'NoneType' object has no attribute 'status'[0m [36mid[0m=[35mBORNE-CABANON4[0m
 [2m2026-04-14T19:18:23.982741Z[0m [[31m[1merror    [0m] [1mSetChargingProfile échoué     [0m [36merror[0m=[35m'NoneType' object has no attribute 'status'[0m [36mid[0m=[35mBORNE-CABANON4[0m
 [2m2026-04-14T19:18:24.366445Z[0m [[31m[1merror    [0m] [1mSetChargingProfile échoué     [0m [36merror[0m=[35m'NoneType' object has no attribute 'status'[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:37:11.991607Z[0m [[32m[1minfo     [0m] [1mDémarrage                     [0m [36mapi_port[0m=[35m8000[0m [36mapp[0m=[35mMon Serveur OCPP[0m [36menv[0m=[35mproduction[0m [36mocpp_port[0m=[35m9000[0m
+[2m2026-04-14T19:37:12.038069Z[0m [[32m[1minfo     [0m] [1mMigration DB : colonne chargers.remote_start_delay ajoutée[0m
+[2m2026-04-14T19:37:12.050987Z[0m [[32m[1minfo     [0m] [1mMigration DB : colonne chargers.local_id_tag ajoutée[0m
+[2m2026-04-14T19:37:12.057025Z[0m [[32m[1minfo     [0m] [1mBase de données initialisée   [0m
+[2m2026-04-14T19:37:12.194970Z[0m [[32m[1minfo     [0m] [1mDémarrage OCPP WebSocket      [0m [36mhost[0m=[35m0.0.0.0[0m [36mport[0m=[35m9000[0m
+[2m2026-04-14T19:37:12.232950Z[0m [[32m[1minfo     [0m] [1mServeur OCPP prêt             [0m [36murl[0m=[35mws://0.0.0.0:9000/ocpp/[ID_BORNE][0m
+[2m2026-04-14T19:37:12.744034Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mVIRTUAL-001[0m [36mip[0m=[35m('127.0.0.1', 54448)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T19:37:12.749772Z[0m [[32m[1minfo     [0m] [1mBootNotification              [0m [36mid[0m=[35mVIRTUAL-001[0m [36mmodel[0m=[35mSimV1[0m [36mvendor[0m=[35mVirtual[0m
+[2m2026-04-14T19:37:12.775102Z[0m [[32m[1minfo     [0m] [1mProfil fabricant calculé      [0m [36mid[0m=[35mVIRTUAL-001[0m [36mlocal_id_tag[0m=[35mADMIN[0m [36mmanufacturer[0m=[35mVirtual[0m [36mremote_start_delay[0m=[35m1.0[0m
+[2m2026-04-14T19:37:14.820842Z[0m [[32m[1minfo     [0m] [1mRemise Operative du connecteur au boot[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T19:37:38.738344Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 54876)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T19:37:39.067382Z[0m [[32m[1minfo     [0m] [1mBootNotification              [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mmodel[0m=[35mCharge Box model[0m [36mvendor[0m=[35mTechnoVE[0m
+[2m2026-04-14T19:37:39.083034Z[0m [[32m[1minfo     [0m] [1mProfil fabricant calculé      [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mlocal_id_tag[0m=[35mADMIN[0m [36mmanufacturer[0m=[35mTechnoVE[0m [36mremote_start_delay[0m=[35m3.0[0m
+[2m2026-04-14T19:37:39.420976Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m0[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mstatus[0m=[35mAvailable[0m
+[2m2026-04-14T19:37:39.764898Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mstatus[0m=[35mPreparing[0m
+[2m2026-04-14T19:37:39.802851Z[0m [[32m[1minfo     [0m] [1mVéhicule détecté → démarrage polling MeterValues[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:37:39.804895Z[0m [[32m[1minfo     [0m] [1mDémarrage polling MeterValues [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:37:41.567373Z[0m [[32m[1minfo     [0m] [1mTechnoVE — TxDefaultProfile appliqué au boot[0m [36mamps[0m=[35m24.0[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:37:41.567945Z[0m [[32m[1minfo     [0m] [1mRemise Operative du connecteur au boot[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:37:42.728056Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mAvailable[0m
+[2m2026-04-14T19:37:42.802182Z[0m [[32m[1minfo     [0m] [1mConfiguration complète récupérée[0m [36mcount[0m=[35m10[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T19:37:44.023238Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mAvailable[0m
+[2m2026-04-14T19:37:44.806315Z[0m [[32m[1minfo     [0m] [1mCréation session synthétique (charge sans StartTransaction OCPP)[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:37:45.722802Z[0m [[32m[1minfo     [0m] [1mStatut réel connecteur après boot[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mAvailable[0m [36mvehicle_present[0m=[35mFalse[0m
+[2m2026-04-14T19:37:45.730685Z[0m [[32m[1minfo     [0m] [1mMeasurands retenus            [0m [36mfinal[0m=[35m['Energy.Active.Import.Register', 'Power.Active.Import', 'Current.Import', 'Voltage', 'SoC'][0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T19:37:45.743195Z[0m [[32m[1minfo     [0m] [1mConfig MeterValueSampleInterval=60[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T19:37:45.755385Z[0m [[32m[1minfo     [0m] [1mConfig MeterValuesSampledData=Energy.Active.Import.Register,Power.Active.Import,Current.Import,Voltage,SoC[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T19:37:45.768635Z[0m [[32m[1minfo     [0m] [1mConfig HeartbeatInterval=30   [0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T19:37:45.818800Z[0m [[32m[1minfo     [0m] [1mConfig ConnectionTimeOut=60   [0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T19:37:45.831914Z[0m [[32m[1minfo     [0m] [1mConfig StopTransactionOnEVSideDisconnect=true[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T19:37:45.850240Z[0m [[32m[1minfo     [0m] [1mConfig Cst_MeterValuesInTxOnly=false[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T19:37:45.891571Z[0m [[32m[1minfo     [0m] [1mBorne verrouillée au boot (pas de véhicule)[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T19:37:45.896512Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mVIRTUAL-001[0m [36mstatus[0m=[35mUnavailable[0m
+[2m2026-04-14T19:38:15.398546Z[0m [[32m[1minfo     [0m] [1mStatut réel connecteur après boot[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mstatus[0m=[35mPreparing[0m [36mvehicle_present[0m=[35mTrue[0m
+[2m2026-04-14T19:38:28.737776Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:38:28.738260Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:38:28.761528Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:38:43.400517Z[0m [[33m[1mwarning  [0m] [1mGetConfiguration échouée      [0m [36merror[0m=[35mWaited 30s for response on [2,"cb0010d4-9c22-4593-8319-d9a6b4ca322f","GetConfiguration",{"key":[]}].[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:38:43.401988Z[0m [[31m[1merror    [0m] [1mRemoteStart échoué            [0m [36merror[0m=[35msent 1011 (internal error) keepalive ping timeout; no close frame received[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:38:43.403885Z[0m [[32m[1minfo     [0m] [1mMeasurands retenus            [0m [36mfinal[0m=[35m['Energy.Active.Import.Register', 'Power.Active.Import'][0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:38:43.406121Z[0m [[31m[1merror    [0m] [1mRemoteStart échoué            [0m [36merror[0m=[35msent 1011 (internal error) keepalive ping timeout; no close frame received[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:38:43.408179Z[0m [[33m[1mwarning  [0m] [1mConfig MeterValueSampleInterval échouée[0m [36merror[0m=[35msent 1011 (internal error) keepalive ping timeout; no close frame received[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:38:43.409660Z[0m [[33m[1mwarning  [0m] [1mConfig MeterValuesSampledData échouée[0m [36merror[0m=[35msent 1011 (internal error) keepalive ping timeout; no close frame received[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:38:43.410950Z[0m [[33m[1mwarning  [0m] [1mConfig HeartbeatInterval échouée[0m [36merror[0m=[35msent 1011 (internal error) keepalive ping timeout; no close frame received[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:38:43.412281Z[0m [[33m[1mwarning  [0m] [1mConfig ConnectionTimeOut échouée[0m [36merror[0m=[35msent 1011 (internal error) keepalive ping timeout; no close frame received[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:38:43.415280Z[0m [[33m[1mwarning  [0m] [1mConfig StopTransactionOnEVSideDisconnect échouée[0m [36merror[0m=[35msent 1011 (internal error) keepalive ping timeout; no close frame received[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:38:43.417631Z[0m [[33m[1mwarning  [0m] [1mConfig Cst_MeterValuesInTxOnly échouée[0m [36merror[0m=[35msent 1011 (internal error) keepalive ping timeout; no close frame received[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:38:43.418263Z[0m [[32m[1minfo     [0m] [1mVéhicule détecté au boot — démarrage polling MeterValues[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:38:43.486400Z[0m [[32m[1minfo     [0m] [1mDémarrage polling MeterValues [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:38:48.488003Z[0m [[32m[1minfo     [0m] [1mCréation session synthétique (charge sans StartTransaction OCPP)[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:38:48.540145Z[0m [[33m[1mwarning  [0m] [1mPolling MeterValues échoué    [0m [36merror[0m=[35msent 1011 (internal error) keepalive ping timeout; no close frame received[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:38:51.359261Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 53387)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T19:38:52.188203Z[0m [[32m[1minfo     [0m] [1mBootNotification              [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mmodel[0m=[35mCharge Box model[0m [36mvendor[0m=[35mTechnoVE[0m
+[2m2026-04-14T19:38:52.214397Z[0m [[32m[1minfo     [0m] [1mProfil fabricant calculé      [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mlocal_id_tag[0m=[35mADMIN[0m [36mmanufacturer[0m=[35mTechnoVE[0m [36mremote_start_delay[0m=[35m3.0[0m
+[2m2026-04-14T19:38:52.555273Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m0[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mstatus[0m=[35mAvailable[0m
+[2m2026-04-14T19:38:52.893631Z[0m [[32m[1minfo     [0m] [1mStatusNotification            [0m [36mconnector[0m=[35m1[0m [36merror[0m=[35mNoError[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mstatus[0m=[35mPreparing[0m
+[2m2026-04-14T19:38:52.932804Z[0m [[32m[1minfo     [0m] [1mVéhicule détecté → démarrage polling MeterValues[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:38:52.934720Z[0m [[32m[1minfo     [0m] [1mDémarrage polling MeterValues [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:38:57.935377Z[0m [[32m[1minfo     [0m] [1mCréation session synthétique (charge sans StartTransaction OCPP)[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:38:58.490568Z[0m [[33m[1mwarning  [0m] [1mSendLocalList échoué          [0m [36merror[0m=[35msent 1011 (internal error) keepalive ping timeout; no close frame received[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:39:22.021293Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:39:22.021642Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:39:22.049080Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:39:24.238863Z[0m [[33m[1mwarning  [0m] [1mTechnoVE — SetChargingProfile boot échoué[0m [36merror[0m=[35mWaited 30s for response on [2,"848aa721-987a-4377-85fd-ed08b1bfb252","SetChargingProfile",{"connectorId":1,"csChargingProfiles":{"chargingProfileId":99,"stackLevel":0,"chargingProfilePurpose":"TxDefaultProfile","chargingProfileKind":"Absolute","chargingSchedule":{"chargingRateUnit":"A","chargingSchedulePeriod":[{"startPeriod":0,"limit":24.0}]}}}].[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:39:24.239197Z[0m [[32m[1minfo     [0m] [1mRemise Operative du connecteur au boot[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:39:24.240457Z[0m [[33m[1mwarning  [0m] [1mGetConfiguration échouée      [0m [36merror[0m=[35mno close frame received or sent[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:39:24.241490Z[0m [[31m[1merror    [0m] [1mSetChargingProfile échoué     [0m [36merror[0m=[35mno close frame received or sent[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:39:24.243315Z[0m [[33m[1mwarning  [0m] [1mChangeAvailability Operative échoué[0m [36merror[0m=[35mno close frame received or sent[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:39:27.247373Z[0m [[32m[1minfo     [0m] [1mStatut réel connecteur après boot[0m [36mid[0m=[35mBORNE-CABANON4[0m [36mstatus[0m=[35mPreparing[0m [36mvehicle_present[0m=[35mTrue[0m
+[2m2026-04-14T19:39:27.252268Z[0m [[32m[1minfo     [0m] [1mMeasurands retenus            [0m [36mfinal[0m=[35m['Energy.Active.Import.Register', 'Power.Active.Import'][0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:39:27.256112Z[0m [[33m[1mwarning  [0m] [1mConfig MeterValueSampleInterval échouée[0m [36merror[0m=[35mno close frame received or sent[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:39:27.258572Z[0m [[33m[1mwarning  [0m] [1mConfig MeterValuesSampledData échouée[0m [36merror[0m=[35mno close frame received or sent[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:39:27.261125Z[0m [[33m[1mwarning  [0m] [1mConfig HeartbeatInterval échouée[0m [36merror[0m=[35mno close frame received or sent[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:39:27.267043Z[0m [[33m[1mwarning  [0m] [1mConfig ConnectionTimeOut échouée[0m [36merror[0m=[35mno close frame received or sent[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:39:27.271480Z[0m [[33m[1mwarning  [0m] [1mConfig StopTransactionOnEVSideDisconnect échouée[0m [36merror[0m=[35mno close frame received or sent[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:39:27.273514Z[0m [[33m[1mwarning  [0m] [1mConfig Cst_MeterValuesInTxOnly échouée[0m [36merror[0m=[35mno close frame received or sent[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:39:27.273870Z[0m [[32m[1minfo     [0m] [1mVéhicule détecté au boot — démarrage polling MeterValues[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:39:27.315182Z[0m [[32m[1minfo     [0m] [1mDémarrage polling MeterValues [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:39:31.745779Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 53389)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T19:39:32.316152Z[0m [[32m[1minfo     [0m] [1mCréation session synthétique (charge sans StartTransaction OCPP)[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:39:42.316518Z[0m [[33m[1mwarning  [0m] [1mSendLocalList échoué          [0m [36merror[0m=[35mno close frame received or sent[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:39:48.541475Z[0m [[33m[1mwarning  [0m] [1mPolling MeterValues échoué    [0m [36merror[0m=[35msent 1011 (internal error) keepalive ping timeout; no close frame received[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:40:43.105619Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:40:43.106100Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:40:43.131617Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:40:48.543529Z[0m [[33m[1mwarning  [0m] [1mPolling MeterValues échoué    [0m [36merror[0m=[35msent 1011 (internal error) keepalive ping timeout; no close frame received[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:40:51.436948Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 53390)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T19:41:30.623554Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:41:30.623781Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:41:30.640736Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:41:40.373868Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 53391)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T19:41:48.545481Z[0m [[33m[1mwarning  [0m] [1mPolling MeterValues échoué    [0m [36merror[0m=[35msent 1011 (internal error) keepalive ping timeout; no close frame received[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:42:20.965374Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:42:20.965737Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:42:20.993989Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:42:41.875843Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 53393)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T19:42:42.531637Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:42:42.531920Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:42:42.556240Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:42:45.852880Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 53394)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T19:42:48.515618Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:42:48.515921Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:42:48.537235Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:42:48.548365Z[0m [[33m[1mwarning  [0m] [1mPolling MeterValues échoué    [0m [36merror[0m=[35msent 1011 (internal error) keepalive ping timeout; no close frame received[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:42:56.466508Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 53395)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T19:43:45.505356Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:43:45.505780Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:43:45.532126Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:43:48.552424Z[0m [[33m[1mwarning  [0m] [1mPolling MeterValues échoué    [0m [36merror[0m=[35msent 1011 (internal error) keepalive ping timeout; no close frame received[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:43:59.190132Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 53398)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T19:44:48.554096Z[0m [[33m[1mwarning  [0m] [1mPolling MeterValues échoué    [0m [36merror[0m=[35msent 1011 (internal error) keepalive ping timeout; no close frame received[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:45:48.559041Z[0m [[33m[1mwarning  [0m] [1mPolling MeterValues échoué    [0m [36merror[0m=[35msent 1011 (internal error) keepalive ping timeout; no close frame received[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:46:48.563960Z[0m [[33m[1mwarning  [0m] [1mPolling MeterValues échoué    [0m [36merror[0m=[35msent 1011 (internal error) keepalive ping timeout; no close frame received[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:47:48.569002Z[0m [[33m[1mwarning  [0m] [1mPolling MeterValues échoué    [0m [36merror[0m=[35msent 1011 (internal error) keepalive ping timeout; no close frame received[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:48:48.571071Z[0m [[33m[1mwarning  [0m] [1mPolling MeterValues échoué    [0m [36merror[0m=[35msent 1011 (internal error) keepalive ping timeout; no close frame received[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:49:48.573150Z[0m [[33m[1mwarning  [0m] [1mPolling MeterValues échoué    [0m [36merror[0m=[35msent 1011 (internal error) keepalive ping timeout; no close frame received[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:50:18.214185Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:50:18.214595Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:50:18.237209Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:50:22.270438Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 53399)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T19:50:48.575513Z[0m [[33m[1mwarning  [0m] [1mPolling MeterValues échoué    [0m [36merror[0m=[35msent 1011 (internal error) keepalive ping timeout; no close frame received[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:51:19.487919Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:51:19.488354Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:51:19.508570Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:51:35.996551Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 53401)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T19:51:48.578931Z[0m [[33m[1mwarning  [0m] [1mPolling MeterValues échoué    [0m [36merror[0m=[35msent 1011 (internal error) keepalive ping timeout; no close frame received[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:52:13.775318Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:52:13.775761Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:52:13.800546Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:52:19.107309Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 53402)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T19:52:37.991587Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:52:37.991901Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:52:38.009753Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:52:38.702751Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 53404)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T19:52:48.582127Z[0m [[33m[1mwarning  [0m] [1mPolling MeterValues échoué    [0m [36merror[0m=[35msent 1011 (internal error) keepalive ping timeout; no close frame received[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:53:38.805494Z[0m [[32m[1minfo     [0m] [1mConnexion fermée              [0m [36mcode[0m=[35m<CloseCode.ABNORMAL_CLOSURE: 1006>[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:53:38.805775Z[0m [[32m[1minfo     [0m] [1mBorne déconnectée             [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:53:38.831192Z[0m [[32m[1minfo     [0m] [1mBorne retirée du registre     [0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:53:38.879552Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 53405)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T19:53:48.586896Z[0m [[33m[1mwarning  [0m] [1mPolling MeterValues échoué    [0m [36merror[0m=[35msent 1011 (internal error) keepalive ping timeout; no close frame received[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:54:48.589188Z[0m [[33m[1mwarning  [0m] [1mPolling MeterValues échoué    [0m [36merror[0m=[35msent 1011 (internal error) keepalive ping timeout; no close frame received[0m [36mid[0m=[35mBORNE-CABANON4[0m
+[2m2026-04-14T19:54:52.641112Z[0m [[32m[1minfo     [0m] [1mDémarrage                     [0m [36mapi_port[0m=[35m8000[0m [36mapp[0m=[35mMon Serveur OCPP[0m [36menv[0m=[35mproduction[0m [36mocpp_port[0m=[35m9000[0m
+[2m2026-04-14T19:54:52.662422Z[0m [[32m[1minfo     [0m] [1mBase de données initialisée   [0m
+[2m2026-04-14T19:54:52.732602Z[0m [[32m[1minfo     [0m] [1mDémarrage OCPP WebSocket      [0m [36mhost[0m=[35m0.0.0.0[0m [36mport[0m=[35m9000[0m
+[2m2026-04-14T19:54:52.755127Z[0m [[32m[1minfo     [0m] [1mServeur OCPP prêt             [0m [36murl[0m=[35mws://0.0.0.0:9000/ocpp/[ID_BORNE][0m
+[2m2026-04-14T19:54:53.933022Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mVIRTUAL-001[0m [36mip[0m=[35m('127.0.0.1', 48416)[0m [36mprotocol[0m=[35mocpp1.6[0m
+[2m2026-04-14T19:54:53.936447Z[0m [[32m[1minfo     [0m] [1mBootNotification              [0m [36mid[0m=[35mVIRTUAL-001[0m [36mmodel[0m=[35mSimV1[0m [36mvendor[0m=[35mVirtual[0m
+[2m2026-04-14T19:54:53.979761Z[0m [[32m[1minfo     [0m] [1mSessions orphelines fermées au reconnect[0m [36mcount[0m=[35m1[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T19:54:54.007575Z[0m [[32m[1minfo     [0m] [1mProfil fabricant calculé      [0m [36mid[0m=[35mVIRTUAL-001[0m [36mlocal_id_tag[0m=[35mADMIN[0m [36mmanufacturer[0m=[35mVirtual[0m [36mremote_start_delay[0m=[35m1.0[0m
+[2m2026-04-14T19:54:56.050400Z[0m [[32m[1minfo     [0m] [1mRemise Operative du connecteur au boot[0m [36mid[0m=[35mVIRTUAL-001[0m
+[2m2026-04-14T19:54:57.714501Z[0m [[32m[1minfo     [0m] [1mBorne connectée               [0m [36mid[0m=[35mBORNE-CABANON4[0m [36mip[0m=[35m('192.168.1.235', 53406)[0m [36mprotocol[0m=[35mocpp1.6[0m
