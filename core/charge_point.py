@@ -59,6 +59,12 @@ class ChargePoint(OcppChargePoint):
         self._local_id_tag:         str             = "ADMIN"  # idTag pour RemoteStart et liste locale
         # Tâches de boot trackées — annulées à chaque déconnexion pour éviter les zombies
         self._boot_tasks:           set[asyncio.Task] = set()
+        # Event déclenché dès réception du premier StatusNotification du connecteur 1
+        # Permet à _post_boot_sequence d'attendre le vrai statut avant de décider
+        self._status_received:      asyncio.Event    = asyncio.Event()
+        # Verrou pour serialiser les opérations RemoteStart/SetChargingProfile
+        # Évite les tentatives concurrentes qui s'annulent mutuellement
+        self._remote_start_lock:    asyncio.Lock     = asyncio.Lock()
 
     # ──────────────────────────────────────────────────────
     # Utilitaires
@@ -165,9 +171,9 @@ class ChargePoint(OcppChargePoint):
                  vendor=charge_point_vendor, model=charge_point_model)
 
         # ── Annuler les tâches de boot en cours (reconnexion rapide sans close propre) ──
-        # Sans ça, les tâches du boot précédent continuent sur le vieux WebSocket mort
-        # et causent des warnings "no close frame" + race conditions.
         self._cancel_boot_tasks()
+        # Réinitialiser l'event de statut pour cette nouvelle connexion
+        self._status_received.clear()
 
         async with AsyncSessionLocal() as db:
             charger = await db.get(Charger, self.id)
@@ -278,6 +284,8 @@ class ChargePoint(OcppChargePoint):
         prev_status = self._connector1_status
         if connector_id == 1:
             self._connector1_status = normalized
+            # Signal pour _post_boot_sequence qui attend le vrai statut avant d'agir
+            self._status_received.set()
 
         async with AsyncSessionLocal() as db:
             result = await db.execute(
@@ -638,7 +646,17 @@ class ChargePoint(OcppChargePoint):
     # ──────────────────────────────────────────────────────
 
     async def _post_boot_sequence(self) -> None:
-        await asyncio.sleep(2)
+        # Attendre le StatusNotification du connecteur 1 (max 10s) pour connaître
+        # le vrai état de la borne AVANT de prendre toute décision.
+        # Sans cette attente, _connector1_status = "Unknown" et les guards TechnoVE ne fonctionnent pas.
+        try:
+            await asyncio.wait_for(self._status_received.wait(), timeout=10.0)
+        except asyncio.TimeoutError:
+            log.warning("_post_boot_sequence — StatusNotification non reçu après 10s, on continue",
+                        id=self.id, status=self._connector1_status)
+
+        # Petite pause de stabilisation après les StatusNotifications initiaux
+        await asyncio.sleep(1)
 
         # ── Étape 1 : Profil de limite de courant ────────────────────────────
         if self._default_max_amps is not None:
@@ -730,17 +748,17 @@ class ChargePoint(OcppChargePoint):
             except Exception as e:
                 log.warning("SetChargingProfile boot (ChargePointMax) échoué", id=self.id, error=str(e))
 
-        # ── Étape 4 : Demander le vrai statut ────────────────────────────────
-        await asyncio.sleep(1)
+        # ── Étape 4 : Statut réel déjà connu (on a attendu StatusNotification au début) ──
+        # On rafraîchit quand même via TriggerMessage pour s'assurer d'avoir l'état le plus récent
+        # si la borne a eu le temps de changer de statut depuis le boot.
         try:
             await self.call(call.TriggerMessage(
                 requested_message=MessageTrigger.status_notification,
                 connector_id=1,
             ))
+            await asyncio.sleep(1)
         except Exception:
             pass
-
-        await asyncio.sleep(2)
 
         real_status = self._connector1_status
         vehicle_present = real_status in VEHICLE_PRESENT_STATUSES
@@ -901,7 +919,12 @@ class ChargePoint(OcppChargePoint):
 
         log.info("TechnoVE — Auto-RemoteStart (véhicule présent au boot, pas de transaction)",
                  id=self.id)
-        success = await self._remote_start_technove(1, self._default_max_amps)
+        # Passer par remote_start_transaction pour bénéficier du verrou
+        success = await self.remote_start_transaction(
+            connector_id=1,
+            id_tag=self._local_id_tag,
+            max_amps=self._default_max_amps,
+        )
         if not success:
             log.warning("TechnoVE — Auto-RemoteStart échoué", id=self.id)
 
@@ -914,17 +937,23 @@ class ChargePoint(OcppChargePoint):
         charging_profile: Optional[dict] = None,
         max_amps: Optional[float] = None,
     ) -> bool:
-        try:
-            amps = max_amps if max_amps is not None else self._default_max_amps
-
-            if self._is_technove:
-                return await self._remote_start_technove(connector_id, amps)
-            else:
-                return await self._remote_start_generic(connector_id, id_tag, amps, charging_profile)
-
-        except Exception as e:
-            log.error("RemoteStart échoué", id=self.id, error=str(e))
+        # Verrou : une seule opération RemoteStart à la fois par borne.
+        # Évite les tentatives concurrentes (auto-retry + dashboard + polling) qui causent
+        # des réponses None ou des PropertyConstraintViolation.
+        if self._remote_start_lock.locked():
+            log.warning("RemoteStart ignoré — opération déjà en cours", id=self.id)
             return False
+
+        async with self._remote_start_lock:
+            try:
+                amps = max_amps if max_amps is not None else self._default_max_amps
+                if self._is_technove:
+                    return await self._remote_start_technove(connector_id, amps)
+                else:
+                    return await self._remote_start_generic(connector_id, id_tag, amps, charging_profile)
+            except Exception as e:
+                log.error("RemoteStart échoué", id=self.id, error=str(e))
+                return False
 
     async def _remote_start_technove(self, connector_id: int, amps: Optional[float]) -> bool:
         """Séquence RemoteStart spécifique TechnoVE.
@@ -995,22 +1024,51 @@ class ChargePoint(OcppChargePoint):
         self, connector_id: int, id_tag: str,
         amps: Optional[float], charging_profile: Optional[dict]
     ) -> bool:
-        """Séquence RemoteStart pour les bornes génériques."""
+        """Séquence RemoteStart pour les bornes génériques.
+
+        OCPP spec §3.6 : si un profil est inclus dans RemoteStartTransaction,
+        son purpose DOIT être TxProfile. Pour éviter toute ambiguïté, on applique
+        les limites via SetChargingProfile séparément (comme pour TechnoVE),
+        et on n'embarque PAS de profil dans le RemoteStartTransaction.
+        """
         await self.call(call.ChangeAvailability(
             connector_id=connector_id,
             type=AvailabilityType.operative,
         ))
         await asyncio.sleep(self._remote_start_delay)
 
+        # Appliquer le profil via SetChargingProfile séparé (AVANT RemoteStart)
         if amps is not None and charging_profile is None:
-            charging_profile = self._build_charging_profile(amps)
-            log.info("Profil de charge appliqué", id=self.id, amps=amps)
+            profile = {
+                "charging_profile_id":      99,
+                "stack_level":              8,
+                "charging_profile_purpose": "TxDefaultProfile",
+                "charging_profile_kind":    "Absolute",
+                "charging_schedule": {
+                    "charging_rate_unit": "A",
+                    "charging_schedule_period": [
+                        {"start_period": 0, "limit": amps}
+                    ],
+                },
+            }
+            try:
+                resp = await self.call(call.SetChargingProfile(
+                    connector_id=connector_id,
+                    cs_charging_profiles=profile,
+                ))
+                if resp is not None:
+                    log.info("Profil de charge appliqué", id=self.id, amps=amps, status=resp.status)
+                else:
+                    log.warning("SetChargingProfile — réponse None", id=self.id)
+            except Exception as e:
+                log.warning("SetChargingProfile pré-RemoteStart échoué", id=self.id, error=str(e))
+            await asyncio.sleep(1)
 
-        kwargs: dict = {"connector_id": connector_id, "id_tag": id_tag}
-        if charging_profile:
-            kwargs["charging_profile"] = charging_profile
-
-        response = await self.call(call.RemoteStartTransaction(**kwargs))
+        # RemoteStart SANS profil embarqué (profil déjà appliqué séparément)
+        response = await self.call(call.RemoteStartTransaction(
+            connector_id=connector_id,
+            id_tag=id_tag,
+        ))
 
         if response is None:
             log.error("RemoteStart — réponse None (connexion perdue)", id=self.id)

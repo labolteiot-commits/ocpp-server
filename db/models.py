@@ -120,6 +120,73 @@ class Session(Base):
     meter_values = relationship("MeterValue", back_populates="session")
 
 
+# ─── Véhicule (lien OBD2 ↔ borne) ───────────────────────
+
+class Vehicle(Base):
+    __tablename__ = "vehicles"
+
+    id                  = Column(String,  primary_key=True)   # VIN ou ID dongle OBD2
+    label               = Column(String,  nullable=True)      # ex: "Tesla Model 3"
+    charger_id          = Column(String,  ForeignKey("chargers.id"), nullable=True)
+    battery_kwh         = Column(Float,   default=60.0)       # capacité batterie kWh
+    max_charge_amps     = Column(Float,   default=32.0)       # courant max accepté par le véhicule (A)
+    target_soc_pct      = Column(Float,   default=90.0)       # SOC cible pour départ
+    charge_efficiency   = Column(Float,   default=0.92)       # rendement charge AC (typiquement 88-95%)
+    notes               = Column(Text,    nullable=True)
+    created_at          = Column(DateTime, default=datetime.utcnow)
+    updated_at          = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    charger  = relationship("Charger", foreign_keys=[charger_id])
+    readings = relationship("OBD2Reading", back_populates="vehicle",
+                            cascade="all, delete", order_by="OBD2Reading.timestamp.desc()")
+
+
+class OBD2Reading(Base):
+    """Lecture OBD2 reçue depuis le dongle.
+    Contient l'état instantané du véhicule (SOC, vitesse, odomètre).
+    Utilisée par le prédictif pour détecter les patterns de trajet.
+    """
+    __tablename__ = "obd2_readings"
+
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    vehicle_id   = Column(String,  ForeignKey("vehicles.id"), nullable=False)
+    timestamp    = Column(DateTime, nullable=False, index=True)
+    soc_pct      = Column(Float,   nullable=True)   # état de charge (%)
+    speed_kmh    = Column(Float,   nullable=True)   # vitesse (km/h)
+    odometer_km  = Column(Float,   nullable=True)   # odomètre (km)
+    latitude     = Column(Float,   nullable=True)
+    longitude    = Column(Float,   nullable=True)
+    is_moving    = Column(Boolean, default=False)   # calculé : speed > 3 km/h
+    raw          = Column(JSON,    nullable=True)   # payload brut complet
+
+    vehicle = relationship("Vehicle", back_populates="readings")
+
+
+class ChargingPlan(Base):
+    """Plan de charge calculé par le prédictif.
+    Représente une décision de charge pour une borne donnée :
+    quand démarrer, à quel courant, quel SOC cible.
+    """
+    __tablename__ = "charging_plans"
+
+    id               = Column(Integer, primary_key=True, autoincrement=True)
+    charger_id       = Column(String,  ForeignKey("chargers.id"), nullable=False)
+    vehicle_id       = Column(String,  ForeignKey("vehicles.id"), nullable=True)
+    created_at       = Column(DateTime, default=datetime.utcnow)
+    planned_start    = Column(DateTime, nullable=False)
+    planned_stop     = Column(DateTime, nullable=False)   # heure prévue de fin
+    departure_time   = Column(DateTime, nullable=True)    # départ prévu du véhicule
+    target_soc_pct   = Column(Float,   nullable=False)
+    current_soc_pct  = Column(Float,   nullable=True)    # SOC au moment du calcul
+    required_amps    = Column(Float,   nullable=False)    # courant calculé
+    status           = Column(String,  default="pending") # pending/active/completed/cancelled
+    applied_at       = Column(DateTime, nullable=True)    # quand SetChargingProfile a été envoyé
+    notes            = Column(Text,    nullable=True)
+
+    charger = relationship("Charger", foreign_keys=[charger_id])
+    vehicle = relationship("Vehicle", foreign_keys=[vehicle_id])
+
+
 # ─── MeterValues ─────────────────────────────────────────
 
 class MeterValue(Base):

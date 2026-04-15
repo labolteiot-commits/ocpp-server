@@ -76,6 +76,7 @@ async def init_db() -> None:
         # Migration contrainte unique sessions (doit être AVANT create_all)
         await _migrate_sessions_unique_constraint(conn)
 
+        # Crée toutes les tables (Vehicle, OBD2Reading, ChargingPlan si absentes)
         await conn.run_sync(Base.metadata.create_all)
 
         # Migration douce — ajoute les nouvelles colonnes si absentes
