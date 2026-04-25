@@ -32,6 +32,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
+__all__ = [
+    "ChargerProfile",
+    "PROFILE_GENERIC", "PROFILE_TECHNOVE",
+    "PROFILE_GRIZZLE_V3", "PROFILE_GRIZZLE_V5", "PROFILE_GRIZZLE_GWM",
+    "PROFILE_ABB_TERRA", "PROFILE_WALLBOX", "PROFILE_ALFEN",
+    "detect_profile",
+    "profile_summary",
+]
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Dataclass principal — un profil par borne détectée

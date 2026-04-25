@@ -27,6 +27,8 @@ from core.logging import log
 
 VEHICLE_PRESENT_STATUSES = {"Charging","Preparing","Finishing","SuspendedEV","SuspendedEVSE"}
 STATUS_WAIT_TIMEOUT = 15.0
+DRIFT_TOLERANCE_A = 2.0
+DRIFT_CONSECUTIVE_SAMPLES = 3
 
 # Sprint 29 Volet D — clés surveillées contre le drift cloud fabricant
 # (TechnoVE/Grizzl-E peuvent rebasculer ces valeurs dans notre dos)
@@ -599,7 +601,7 @@ class StateMixin:
                     for item in r.configuration_key or []:
                         if item["key"]=="MeterValuesSampledDataMaxLength":
                             try: ml=int(item.get("value",str(len(DESIRED))))
-                            except Exception: pass
+                            except Exception as exc: log.warning("MeterValuesSampledDataMaxLength parse error", error=str(exc))
                         if item["key"]=="MeterValuesSampledData":
                             c=[m.strip() for m in item.get("value","").split(",") if m.strip()]
                             if c: supp=c
@@ -786,9 +788,6 @@ class StateMixin:
         Ne vérifie que pendant une transaction active (éviter faux positifs
         sur courant résiduel / mesure-à-vide).
         """
-        DRIFT_TOLERANCE_A = 2.0
-        DRIFT_CONSECUTIVE_SAMPLES = 3
-
         # Ne vérifier que pendant une transaction OCPP active
         active_tx_ids = [tid for tid in self._active_transactions if tid > 0]
         if not active_tx_ids:

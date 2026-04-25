@@ -194,7 +194,6 @@ class HandlersMixin:
     async def _fire_auto_schedule(self):
         """POST non-bloquant vers telemetry quand la borne passe en Preparing."""
         import json as _j
-        import asyncio
         import urllib.request
 
         def _post():

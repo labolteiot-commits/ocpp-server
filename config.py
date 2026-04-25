@@ -12,12 +12,9 @@ class OCPPSettings(BaseSettings):
     port: int = 9000
     ws_path: str = "/ocpp"
 
-    # BUG CORRIGÉ : "ocpp2.0.1" RETIRÉ — ChargePoint est OCPP 1.6 uniquement.
-    # Si on accepte ocpp2.0.1 dans le handshake mais qu'on répond avec des messages
-    # OCPP 1.6, la borne reçoit des frames invalides et déconnecte.
-    #
-    # Les variantes OCPP 1.6 (ocpp1.6.0, ocpp16, etc.) sont gérées dans
-    # ocpp_server.py via _OCPP16_VARIANTS — pas besoin de les lister ici.
+    # Protocole supporté : OCPP 1.6J uniquement.
+    # Les variantes syntaxiques (ocpp1.6.0, ocpp16, ocpp1.6j) sont normalisées
+    # dans ocpp_server.py via _OCPP16_VARIANTS — pas besoin de les lister ici.
     supported_protocols: list[str] = ["ocpp1.6"]
 
     # ping_interval=None : désactive les WebSocket pings côté serveur.
