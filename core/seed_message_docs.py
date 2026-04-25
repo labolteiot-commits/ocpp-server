@@ -10,7 +10,7 @@ qui empêche le seed de l'écraser — pas encore fait.
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from core.logging import log
 from core.ocpp_message_docs_seed import OCPP_MESSAGE_DOCS
@@ -39,7 +39,7 @@ async def seed_message_docs() -> int:
                 "fields_fr":      fields_json,
                 "triggered_by":   entry.get("triggered_by"),
                 "cs_response":    entry.get("cs_response"),
-                "updated_at":     datetime.utcnow(),
+                "updated_at":     datetime.now(timezone.utc),
             }
             if existing is None:
                 db.add(OcppMessageDoc(name=name, **payload))

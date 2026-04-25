@@ -28,7 +28,7 @@ import logging
 import re
 import time
 from collections import OrderedDict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from core.logging import log
@@ -194,7 +194,7 @@ class _ActivityCaptureHandler(logging.Handler):
             "error_description": error_description,
             "connector_id":      connector_id,
             "transaction_id":    transaction_id,
-            "timestamp":         datetime.utcnow(),
+            "timestamp":         datetime.now(timezone.utc),
         }
         try:
             self._queue.put_nowait(item)
@@ -311,7 +311,7 @@ async def purge_activity(days: int = 90) -> int:
     from datetime import timedelta
     from db.database import AsyncSessionLocal
     from sqlalchemy import text
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     async with AsyncSessionLocal() as db:
         r = await db.execute(
             text("DELETE FROM charger_activity_log WHERE timestamp < :cutoff"),

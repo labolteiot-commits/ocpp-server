@@ -48,12 +48,12 @@ class ActionsMixin:
         except Exception as e: log.error("RemoteStop failed",id=self.id,error=str(e)); return False
     async def reset(self, reset_type="Soft"):
         try: r=await self.call(call.Reset(type=ResetType(reset_type))); return r.status==ResetStatus.accepted
-        except: return False
+        except Exception as exc: log.warning("Reset failed", id=self.id, error=str(exc)); return False
     async def clear_cache(self):
         try:
             from ocpp.v16.enums import ClearCacheStatus
             r=await self.call(call.ClearCache()); return r.status==ClearCacheStatus.accepted
-        except: return False
+        except Exception as exc: log.warning("ClearCache failed", id=self.id, error=str(exc)); return False
     async def get_configuration(self, keys=None):
         try:
             r=await self._safe_call(call.GetConfiguration(key=keys or []),context="GetConfiguration")
@@ -61,13 +61,13 @@ class ActionsMixin:
                 for item in r.configuration_key or []: self._config_cache[item["key"]]=item.get("value","")
                 return r.configuration_key or []
             return []
-        except: return []
+        except Exception as exc: log.warning("GetConfiguration failed", id=self.id, error=str(exc)); return []
     async def change_configuration(self, key, value):
         try:
             r=await self._safe_call(call.ChangeConfiguration(key=key,value=value),context=f"ChangeConfiguration {key}")
             if r and r.status=="Accepted": self._config_cache[key]=value
             return r.status if r else "Failed"
-        except: return "Failed"
+        except Exception as exc: log.warning("ChangeConfiguration failed", id=self.id, key=key, error=str(exc)); return "Failed"
     async def set_charging_profile(self, connector_id, profile):
         # Sprint 31 Volet B — gate SmartCharging
         try:
@@ -77,6 +77,10 @@ class ActionsMixin:
                 return "NotSupported"
         except Exception:
             pass  # permissif si check échoue
+        if profile.get("chargingProfilePurpose") == "TxProfile" and not profile.get("transactionId"):
+            log.error("SetChargingProfile TxProfile sans transactionId — profil rejeté",
+                      id=self.id, profile_id=profile.get("chargingProfileId"))
+            return "Rejected"
         try:
             r=await self._safe_call(call.SetChargingProfile(connector_id=connector_id,cs_charging_profiles=profile),context="SetChargingProfile")
             status = r.status if r else "Failed"
@@ -86,7 +90,7 @@ class ActionsMixin:
                 if amps is not None:
                     self._scheduler_applied_amps = amps
             return status
-        except: return "Failed"
+        except Exception as exc: log.warning("set_charging_profile failed", id=self.id, error=str(exc)); return "Failed"
     async def clear_charging_profile(
         self,
         connector_id: int | None = 0,
@@ -136,15 +140,15 @@ class ActionsMixin:
         try:
             r=await self._safe_call(call.ChangeAvailability(connector_id=connector_id,type=AvailabilityType.operative),context="set_available")
             return r is not None and r.status in ("Accepted","Scheduled")
-        except: return False
+        except Exception as exc: log.warning("set_available failed", id=self.id, error=str(exc)); return False
     async def set_unavailable(self, connector_id):
         try:
             r=await self._safe_call(call.ChangeAvailability(connector_id=connector_id,type=AvailabilityType.inoperative),context="set_unavailable")
             return r is not None and r.status in ("Accepted","Scheduled")
-        except: return False
+        except Exception as exc: log.warning("set_unavailable failed", id=self.id, error=str(exc)); return False
     async def unlock_connector(self, connector_id):
         try: r=await self.call(call.UnlockConnector(connector_id=connector_id)); return r.status
-        except: return "Failed"
+        except Exception as exc: log.warning("unlock_connector failed", id=self.id, error=str(exc)); return "Failed"
     async def trigger_message(self, message, connector_id=None):
         # Sprint 31 Volet B — gate RemoteTrigger
         try:
@@ -159,7 +163,7 @@ class ActionsMixin:
             if connector_id is not None: kw["connector_id"]=connector_id
             r=await self._safe_call(call.TriggerMessage(**kw),context=f"TriggerMessage {message}")
             return r.status if r else "Failed"
-        except: return "Failed"
+        except Exception as exc: log.warning("trigger_message failed", id=self.id, error=str(exc)); return "Failed"
     async def send_local_list(self, list_version, update_type, local_auth_list):
         # Sprint 31 Volet B — gate LocalAuthListManagement
         try:
@@ -172,7 +176,7 @@ class ActionsMixin:
         try:
             r=await self._safe_call(call.SendLocalList(list_version=list_version,update_type=update_type,local_authorization_list=local_auth_list),context="SendLocalList")
             return r.status if r else "Failed"
-        except: return "Failed"
+        except Exception as exc: log.warning("send_local_list failed", id=self.id, error=str(exc)); return "Failed"
     async def get_local_list_version(self):
         """Sprint 31 - GetLocalListVersion OCPP 1.6J 6.11.
 
@@ -586,5 +590,5 @@ class ActionsMixin:
         try:
             async with AsyncSessionLocal() as db:
                 await db.execute(update(Charger).where(Charger.id==self.id).values(status=ChargerStatus.OFFLINE)); await db.commit()
-        except: pass
+        except Exception as exc: log.warning("Disconnect status update failed", id=self.id, error=str(exc))
         await self.server.broadcast_disconnect(self.id)

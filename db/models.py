@@ -1,5 +1,5 @@
 # db/models.py
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum as PyEnum
 from sqlalchemy import (
     Column, String, Integer, Float, Boolean,
@@ -49,8 +49,8 @@ class Charger(Base):
     heartbeat_interval = Column(Integer, nullable=True)
     # Sprint 31 Volet B : liste CSV des SupportedFeatureProfiles (Core,FirmwareManagement,...)
     supported_profiles = Column(String(200), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     connectors                 = relationship("Connector",               back_populates="charger", cascade="all, delete")
     sessions                   = relationship("Session",                 back_populates="charger")
     events                     = relationship("Event",                   back_populates="charger")
@@ -64,7 +64,7 @@ class Connector(Base):
     connector_id = Column(Integer, nullable=False)
     status       = Column(Enum(ConnectorStatus), default=ConnectorStatus.UNAVAILABLE)
     error_code   = Column(String,  nullable=True)
-    updated_at   = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at   = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     charger  = relationship("Charger",  back_populates="connectors")
     sessions = relationship("Session",  back_populates="connector")
 
@@ -78,7 +78,7 @@ class Session(Base):
     connector_id   = Column(Integer, ForeignKey("connectors.id"), nullable=False)
     id_tag         = Column(String,  nullable=False)
     status         = Column(Enum(SessionStatus), default=SessionStatus.ACTIVE)
-    start_time     = Column(DateTime, default=datetime.utcnow)
+    start_time     = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     stop_time      = Column(DateTime, nullable=True)
     energy_wh      = Column(Float,   default=0.0)
     meter_start    = Column(Float,   default=0.0)
@@ -94,7 +94,7 @@ class MeterValue(Base):
     id          = Column(Integer, primary_key=True, autoincrement=True)
     session_id  = Column(Integer, ForeignKey("sessions.id"), nullable=True)
     charger_id  = Column(String, ForeignKey("chargers.id"), nullable=True, index=True)
-    timestamp   = Column(DateTime, default=datetime.utcnow)
+    timestamp   = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     energy_wh   = Column(Float,  nullable=True)
     power_w     = Column(Float,  nullable=True)
     current_a   = Column(Float,  nullable=True)
@@ -108,7 +108,7 @@ class Event(Base):
     __tablename__ = "events"
     id         = Column(Integer, primary_key=True, autoincrement=True)
     charger_id = Column(String,  ForeignKey("chargers.id"), nullable=False)
-    timestamp  = Column(DateTime, default=datetime.utcnow)
+    timestamp  = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     type       = Column(String,  nullable=False)
     payload    = Column(JSON,    nullable=True)
     notes      = Column(Text,    nullable=True)
@@ -125,7 +125,7 @@ class Vehicle(Base):
     target_soc_pct    = Column(Float,   default=90.0)
     charge_efficiency = Column(Float,   default=0.92)
     notes             = Column(Text,    nullable=True)
-    created_at        = Column(DateTime, default=datetime.utcnow)
+    created_at        = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     readings = relationship("OBD2Reading",  back_populates="vehicle", cascade="all, delete")
     plans    = relationship("ChargingPlan", back_populates="vehicle")
 
@@ -150,7 +150,7 @@ class ChargingPlan(Base):
     id              = Column(Integer, primary_key=True, autoincrement=True)
     charger_id      = Column(String,  ForeignKey("chargers.id"), nullable=False)
     vehicle_id      = Column(String,  ForeignKey("vehicles.id"), nullable=True)
-    created_at      = Column(DateTime, default=datetime.utcnow)
+    created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     planned_start   = Column(DateTime, nullable=False)
     planned_stop    = Column(DateTime, nullable=False)
     departure_time  = Column(DateTime, nullable=True)
@@ -172,7 +172,7 @@ class ChargingProfileSnapshot(Base):
     connector_id = Column(Integer, nullable=False)
     purpose      = Column(String,  nullable=False)
     profile_json = Column(JSON,    nullable=False)
-    applied_at   = Column(DateTime, default=datetime.utcnow)
+    applied_at   = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     # Sprint 24 A10 : marquer expiré plutôt que supprimer (audit trail + purge > 90j au boot)
     expired_at   = Column(DateTime, nullable=True)
     charger = relationship("Charger", back_populates="charging_profile_snapshots")
@@ -206,8 +206,8 @@ class Reservation(Base):
     parent_id_tag   = Column(String,  nullable=True)
     expiry_date     = Column(DateTime, nullable=False)
     status          = Column(Enum(ReservationStatus), default=ReservationStatus.ACTIVE, nullable=False)
-    created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at      = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     ocpp_status     = Column(String,  nullable=True)    # réponse brute ReserveNow ("Accepted"/"Occupied"/...)
     notes           = Column(Text,    nullable=True)
     __table_args__  = (UniqueConstraint("charger_id", "reservation_id",
@@ -231,7 +231,7 @@ class DataTransferLog(Base):
     message_id  = Column(String,  nullable=True)
     data        = Column(Text,    nullable=True)    # payload brut (peut être JSON ou string)
     response    = Column(String,  nullable=True)    # status OCPP ("Accepted"/"Rejected"/"UnknownVendorId"/...)
-    timestamp   = Column(DateTime, default=datetime.utcnow, nullable=False)
+    timestamp   = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
 # ─── Sprint 29 Volet A : Whitelist idTag (Authorize) ────────────────────────
@@ -258,8 +258,8 @@ class OcppTag(Base):
     expiry_date    = Column(DateTime, nullable=True)
     max_active_tx  = Column(Integer, default=1)
     note           = Column(String(200), nullable=True)
-    created_at     = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at     = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at     = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at     = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
 
 # ─── Sprint 29 Volet B : GetDiagnostics + DiagnosticsStatusNotification ────
@@ -281,7 +281,7 @@ class DiagnosticsRequest(Base):
     retry_interval     = Column(Integer, nullable=True)
     start_time         = Column(DateTime, nullable=True)
     stop_time          = Column(DateTime, nullable=True)
-    requested_at       = Column(DateTime, default=datetime.utcnow, nullable=False)
+    requested_at       = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     filename_returned  = Column(String(200), nullable=True)
     status             = Column(String(32), default="Requested", nullable=False)
     status_updated_at  = Column(DateTime, nullable=True)
@@ -312,7 +312,7 @@ class ConfigSnapshot(Base):
     drift_count     = Column(Integer, default=0)
     last_drift_at   = Column(DateTime, nullable=True)
     last_heal_at    = Column(DateTime, nullable=True)
-    captured_at     = Column(DateTime, default=datetime.utcnow, nullable=False)
+    captured_at     = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
 # ─── Sprint 30 Volet A : UpdateFirmware flow ────────────────────────────────
@@ -337,7 +337,7 @@ class FirmwareUpdate(Base):
     retrieve_date            = Column(DateTime, nullable=False)
     retries                  = Column(Integer, nullable=True)
     retry_interval           = Column(Integer, nullable=True)
-    requested_at             = Column(DateTime, default=datetime.utcnow, nullable=False)
+    requested_at             = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     status                   = Column(String(32), default="Requested", nullable=False)
     status_updated_at        = Column(DateTime, nullable=True)
     firmware_version_before  = Column(String(40), nullable=True)
@@ -393,7 +393,7 @@ class StatusNotificationLog(Base):
     vendor_id          = Column(String(100), nullable=True)
     vendor_error_code  = Column(String(100), nullable=True)
     timestamp          = Column(DateTime, nullable=True)          # timestamp borne (peut être NULL)
-    received_at        = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    received_at        = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
 
 
 class OverrideIncident(Base):
@@ -423,7 +423,7 @@ class OverrideIncident(Base):
     samples_consecutive = Column(Integer, default=3, nullable=False)
     reapplied         = Column(Boolean, default=False, nullable=False)
     reapply_status    = Column(String(32), nullable=True)
-    detected_at       = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    detected_at       = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
     notes             = Column(String(500), nullable=True)
 
 
@@ -459,7 +459,7 @@ class ChargerActivityLog(Base):
     error_description = Column(String(255), nullable=True)
     connector_id      = Column(Integer, nullable=True)       # extrait du payload si présent
     transaction_id    = Column(Integer, nullable=True, index=True)  # idem
-    timestamp         = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    timestamp         = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
 
 
 class OcppMessageDoc(Base):
@@ -487,8 +487,8 @@ class OcppMessageDoc(Base):
     fields_fr        = Column(Text, nullable=True)            # JSON
     triggered_by     = Column(String(300), nullable=True)
     cs_response      = Column(String(300), nullable=True)
-    updated_at       = Column(DateTime, default=datetime.utcnow,
-                                onupdate=datetime.utcnow, nullable=False)
+    updated_at       = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                                onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
 # Sprint 33 — Certification OCPP 1.6J — modèles DB
 # À APPENDER à la fin de /home/lteiot/ocpp-server/db/models.py
@@ -525,7 +525,7 @@ class CertificationRun(Base):
     failed             = Column(Integer, nullable=False, default=0)
     skipped            = Column(Integer, nullable=False, default=0)
     total              = Column(Integer, nullable=False, default=0)
-    started_at         = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    started_at         = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
     finished_at        = Column(DateTime, nullable=True)
     duration_s         = Column(Float, nullable=True)
     report_html        = Column(Text, nullable=True)
@@ -547,4 +547,4 @@ class CertificationTestResult(Base):
     recommendation = Column(Text, nullable=True)
     ocpp_ref       = Column(String(40), nullable=True)
     duration_s     = Column(Float, nullable=True)
-    started_at     = Column(DateTime, default=datetime.utcnow, nullable=False)
+    started_at     = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)

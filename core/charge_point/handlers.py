@@ -128,11 +128,11 @@ class HandlersMixin:
             if conn is None:
                 conn = Connector(charger_id=self.id, connector_id=connector_id); db.add(conn)
             try: conn.status = ConnectorStatus(normalized)
-            except: conn.status = ConnectorStatus.UNAVAILABLE
+            except Exception: conn.status = ConnectorStatus.UNAVAILABLE
             conn.error_code = error_code if error_code != "NoError" else None
             if connector_id == 0:
                 try: await db.execute(update(Charger).where(Charger.id==self.id).values(status=ChargerStatus(normalized)))
-                except: pass
+                except Exception as exc: log.warning("ChargerStatus update failed", id=self.id, error=str(exc))
             # Sprint 31 Volet C — log complet de chaque StatusNotification
             try:
                 db.add(StatusNotificationLog(
@@ -259,19 +259,22 @@ class HandlersMixin:
                 transaction_id=0,
                 id_tag_info=auth_info,
             )
-        tx_id = self._next_transaction_id; self._next_transaction_id += 1
+        async with self._transactions_lock:
+            tx_id = self._next_transaction_id
+            self._next_transaction_id += 1
         log.info("StartTransaction", id=self.id, tx_id=tx_id)
         if self._synthetic_session_id: await self._close_synthetic_session()
         async with AsyncSessionLocal() as db:
             ex = await db.execute(select(Session).where(Session.charger_id==self.id, Session.transaction_id==tx_id))
             session = ex.scalar_one_or_none()
             if session:
-                self._active_transactions[tx_id] = session.id
+                async with self._transactions_lock:
+                    self._active_transactions[tx_id] = session.id
             else:
                 r = await db.execute(select(Connector).where(Connector.charger_id==self.id, Connector.connector_id==connector_id))
                 conn = r.scalar_one_or_none()
                 try: st = datetime.fromisoformat(timestamp.replace("Z","+00:00"))
-                except: st = datetime.now(timezone.utc)
+                except Exception: st = datetime.now(timezone.utc)
                 session = Session(transaction_id=tx_id, charger_id=self.id,
                                   connector_id=conn.id if conn else connector_id,
                                   id_tag=id_tag, meter_start=meter_start/1000.0,
@@ -279,7 +282,8 @@ class HandlersMixin:
                 db.add(session)
                 try:
                     await db.commit(); await db.refresh(session)
-                    self._active_transactions[tx_id] = session.id
+                    async with self._transactions_lock:
+                        self._active_transactions[tx_id] = session.id
                 except Exception as e:
                     await db.rollback()
                     log.error("StartTransaction insert failed", id=self.id, error=str(e))
@@ -297,10 +301,11 @@ class HandlersMixin:
                 kwh = meter_stop/1000.0
                 session.meter_stop=kwh; session.energy_wh=(kwh-(session.meter_start or 0))*1000
                 try: session.stop_time=datetime.fromisoformat(timestamp.replace("Z","+00:00"))
-                except: session.stop_time=datetime.now(timezone.utc)
+                except Exception: session.stop_time=datetime.now(timezone.utc)
                 session.stop_reason=reason; session.status=SessionStatus.COMPLETED
                 await db.commit()
-            self._active_transactions.pop(transaction_id,None)
+            async with self._transactions_lock:
+                self._active_transactions.pop(transaction_id, None)
         await self.server.broadcast_transaction(self.id,"stop",{"transaction_id":transaction_id,"meter_stop":meter_stop,"reason":reason})
         return call_result.StopTransaction(id_tag_info={"status":AuthorizationStatus.accepted})
     @on(Action.MeterValues)
@@ -324,7 +329,7 @@ class HandlersMixin:
                     self._last_energy[connector_id]={"energy_wh":parsed["energy_wh"],"time":now}
                 raw_ts=mv.get("timestamp")
                 try: ts=datetime.fromisoformat(raw_ts.replace("Z","+00:00")) if raw_ts else datetime.now(timezone.utc)
-                except: ts=datetime.now(timezone.utc)
+                except Exception: ts=datetime.now(timezone.utc)
                 db.add(MeterValue(session_id=session_db.id if session_db else None, charger_id=self.id, timestamp=ts,
                                   energy_wh=parsed.get("energy_wh"), power_w=parsed.get("power_w"),
                                   current_a=parsed.get("current_a"), voltage_v=parsed.get("voltage_v"),

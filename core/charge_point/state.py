@@ -534,7 +534,7 @@ class StateMixin:
         # Step 3: trigger status
         await asyncio.sleep(1)
         try: await self._safe_call(call.TriggerMessage(requested_message=MessageTrigger.status_notification,connector_id=1),context="TriggerMessage Status")
-        except: pass
+        except Exception as exc: log.warning("TriggerMessage Status failed", id=self.id, error=str(exc))
         await asyncio.sleep(2)
         real=self._connector1_status; vp=real in VEHICLE_PRESENT_STATUSES
         log.info("Statut final post-boot",id=self.id,status=real,vehicle_present=vp,profile=p.name)
@@ -592,12 +592,14 @@ class StateMixin:
                     for item in r.configuration_key or []:
                         if item["key"]=="MeterValuesSampledDataMaxLength":
                             try: ml=int(item.get("value",str(len(DESIRED))))
-                            except: pass
+                            except Exception: pass
                         if item["key"]=="MeterValuesSampledData":
                             c=[m.strip() for m in item.get("value","").split(",") if m.strip()]
                             if c: supp=c
                     final=[m for m in DESIRED if m in supp][:ml] or ["Energy.Active.Import.Register","Power.Active.Import"]
-            except: final=["Energy.Active.Import.Register","Power.Active.Import"]
+            except Exception as exc:
+                log.warning("GetConfiguration MeterValues failed", id=self.id, error=str(exc))
+                final=["Energy.Active.Import.Register","Power.Active.Import"]
         self._active_measurands=final
         # A2 : HeartbeatInterval propagé depuis DB (override par borne) ou profile par défaut
         hb = getattr(self, "_heartbeat_interval", None) or p.heartbeat_interval
@@ -609,7 +611,7 @@ class StateMixin:
             try:
                 resp=await self._safe_call(call.ChangeConfiguration(key=key,value=val),context=f"ChangeConfiguration {key}")
                 if resp and resp.status=="Accepted": self._config_cache[key]=val
-            except: pass
+            except Exception as exc: log.warning("ChangeConfiguration failed", id=self.id, key=key, error=str(exc))
     async def _fetch_configuration(self):
         await asyncio.sleep(10)
         try:
@@ -617,7 +619,7 @@ class StateMixin:
             if r:
                 for item in r.configuration_key or []: self._config_cache[item["key"]]=item.get("value","")
                 await self.server.broadcast_config(self.id,self._config_cache)
-        except: pass
+        except Exception as exc: log.warning("_fetch_configuration failed", id=self.id, error=str(exc))
     async def _populate_local_list(self):
         await asyncio.sleep(15)
         # M1 fix : OCPP 1.6 §6.10 — list_version DOIT être > version actuelle de la borne.
@@ -711,7 +713,7 @@ class StateMixin:
     async def _lock_after_stop(self):
         self._stop_meter_polling(); await asyncio.sleep(5)
         try: await self._safe_call(call.ChangeAvailability(connector_id=1,type=AvailabilityType.inoperative),context="lock after stop")
-        except: pass
+        except Exception as exc: log.warning("_lock_after_stop failed", id=self.id, error=str(exc))
     # ── Sprint 29 Volet B : GetDiagnostics + DiagnosticsStatusNotification ──
 
     # ── Sprint 30 Volet A : UpdateFirmware ──────────────────────────────────

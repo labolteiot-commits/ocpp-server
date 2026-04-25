@@ -20,6 +20,7 @@ class ChargePoint(HandlersMixin, ActionsMixin, StateMixin, OcppChargePoint):
         self.ip_address = ip_address
         self.profile: ChargerProfile = PROFILE_GENERIC
         self._active_transactions: dict = {}
+        self._transactions_lock = asyncio.Lock()
         self._next_transaction_id: int = 1
         self._last_energy: dict = {}
         self._config_cache: dict = {}

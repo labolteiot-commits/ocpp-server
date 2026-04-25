@@ -33,6 +33,57 @@ from db.models import (
 )
 from core.logging import log
 
+# MAJ-05 — Clés OCPP 1.6J autorisées via l'API (subset safe, pas de clés internes)
+OCPP16_ALLOWED_KEYS: frozenset[str] = frozenset({
+    "HeartbeatInterval",
+    "MeterValueSampleInterval",
+    "MeterValuesSampledData",
+    "ConnectionTimeOut",
+    "ResetRetries",
+    "StopTransactionOnEVSideDisconnect",
+    "StopTransactionOnInvalidId",
+    "UnlockConnectorOnEVSideDisconnect",
+    "LocalAuthorizeOffline",
+    "LocalPreAuthorize",
+    "AllowOfflineTxForUnknownId",
+    "AuthorizationCacheEnabled",
+    "MaxEnergyOnInvalidId",
+    "TransactionMessageAttempts",
+    "TransactionMessageRetryInterval",
+    "GetConfigurationMaxKeys",
+    "SupportedFeatureProfiles",
+    "ChargeProfileMaxStackLevel",
+    "ChargingScheduleAllowedChargingRateUnit",
+    "ChargingScheduleMaxPeriods",
+    "MaxChargingProfilesInstalled",
+    "MinimumStatusDuration",
+    # Fabricant custom (autorisés explicitement)
+    "Cst_MeterValuesInTxOnly",
+})
+
+
+def _validate_remote_url(url: str) -> None:
+    """MAJ-06 — Anti-SSRF : rejette les URLs qui ne sont pas HTTP/HTTPS/FTP vers
+    des hôtes non-locaux. Lève HTTPException 400 si l'URL est invalide."""
+    import urllib.parse
+    try:
+        parsed = urllib.parse.urlparse(url)
+    except Exception:
+        raise HTTPException(status_code=400, detail=f"URL invalide : {url!r}")
+    if parsed.scheme not in ("http", "https", "ftp"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Schéma d'URL non autorisé : {parsed.scheme!r}. "
+                   "Seuls http, https et ftp sont acceptés."
+        )
+    host = (parsed.hostname or "").lower()
+    blocked = ("localhost", "127.", "0.0.0.0", "::1", "169.254.", "10.", "172.16.", "192.168.")
+    if any(host == b or host.startswith(b) for b in blocked):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Hôte local non autorisé pour les URL distantes : {host!r}"
+        )
+
 router = APIRouter()
 
 
@@ -524,6 +575,11 @@ async def get_configuration(body: ConfigGetRequest, request: Request):
     ),
 )
 async def set_configuration(body: ConfigSetRequest, request: Request):
+    if body.key not in OCPP16_ALLOWED_KEYS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Clé '{body.key}' non autorisée. Utilisez une clé OCPP 1.6J standard."
+        )
     cp = _get_cp(request, body.charger_id)
     status = await cp.change_configuration(body.key, body.value)
     if status == "Failed":
@@ -1135,6 +1191,7 @@ async def send_local_list(body: SendLocalListRequest, request: Request):
     ),
 )
 async def get_diagnostics(body: GetDiagnosticsRequestBody, request: Request):
+    _validate_remote_url(body.location)
     cp = _get_cp(request, body.charger_id)
     result = await cp.get_diagnostics(
         location=body.location,
@@ -1209,6 +1266,7 @@ async def list_diagnostics(
 )
 async def update_firmware(body: UpdateFirmwareRequestBody, request: Request,
                           db: AsyncSession = Depends(get_db)):
+    _validate_remote_url(body.location)
     cp = _get_cp(request, body.charger_id)
     if body.retrieve_date:
         try:
