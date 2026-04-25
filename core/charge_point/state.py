@@ -364,13 +364,20 @@ class StateMixin:
     async def _authorize_id_tag(self, id_tag: str) -> dict:
         """Retourne un id_tag_info conforme OCPP 1.6J §5.2 selon la whitelist.
 
-        Fallback permissif : si la table `ocpp_tags` est vide → Accepted
-        (retrocompat pour les 3 bornes déjà en prod sans whitelist configurée).
+        Comportement selon enforce_whitelist (colonne chargers, défaut=0) :
+        - enforce_whitelist=0 (défaut) : whitelist vide → Accepted (rétrocompat prod).
+        - enforce_whitelist=1 : whitelist vide → Blocked + log d'alerte (protection).
         """
         try:
             async with AsyncSessionLocal() as db:
+                charger = await db.get(Charger, self.id)
+                enforce = bool(charger.enforce_whitelist) if charger and charger.enforce_whitelist else False
                 any_tag = await db.scalar(select(sa_func.count()).select_from(OcppTag))
                 if not any_tag:
+                    if enforce:
+                        log.error("[AUTH] enforce_whitelist=True mais aucun tag configuré — REJET sécurité",
+                                  id=self.id, id_tag=id_tag)
+                        return {"status": AuthorizationStatus.blocked}
                     return {"status": AuthorizationStatus.accepted}
                 tag = await db.scalar(select(OcppTag).where(OcppTag.id_tag == id_tag))
                 if tag is None:

@@ -64,6 +64,7 @@ async def _migrate_sessions_unique_constraint(conn) -> None:
         log.info("Migration sessions terminée — contrainte composite en place")
     except Exception as e:
         log.error(f"Migration sessions échouée : {e}")
+        raise  # Laisser engine.begin() rollback — ne pas committer une migration partielle
 
 
 async def init_db() -> None:
@@ -77,10 +78,12 @@ async def init_db() -> None:
 
         # Migration douce — ajoute les nouvelles colonnes si absentes
         _new_charger_columns = [
-            ("remote_start_delay", "REAL"),
-            ("local_id_tag",       "VARCHAR"),
+            ("remote_start_delay",  "REAL"),
+            ("local_id_tag",        "VARCHAR"),
             # Sprint 25 A2 : override heartbeat_interval par borne
-            ("heartbeat_interval", "INTEGER"),
+            ("heartbeat_interval",  "INTEGER"),
+            # MED-03 : whitelist stricte opt-in par borne (0=permissif, 1=strict)
+            ("enforce_whitelist",   "INTEGER DEFAULT 0"),
         ]
         for col_name, col_type in _new_charger_columns:
             try:

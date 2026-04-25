@@ -27,6 +27,8 @@ VEHICLE_PRESENT_STATUSES = {"Charging","Preparing","Finishing","SuspendedEV","Su
 
 class ActionsMixin:
     # ── RemoteStart (profile-driven, séquence unifiée) ────────────────────────
+    _REMOTE_START_TIMEOUT_S = 30.0  # borne lente ou déconnectée
+
     async def remote_start_transaction(self, connector_id, id_tag, charging_profile=None, max_amps=None):
         # Lever le verrou serveur — l'opérateur démarre manuellement
         self._server_lock_active = False
@@ -35,7 +37,13 @@ class ActionsMixin:
         async with self._remote_start_lock:
             try:
                 amps=max_amps if max_amps is not None else self._default_max_amps
-                return await self._do_remote_start(connector_id,amps,id_tag,charging_profile)
+                return await asyncio.wait_for(
+                    self._do_remote_start(connector_id, amps, id_tag, charging_profile),
+                    timeout=self._REMOTE_START_TIMEOUT_S,
+                )
+            except asyncio.TimeoutError:
+                log.warning("RemoteStart timeout 30s — borne non réactive", id=self.id)
+                return False
             except Exception as e:
                 log.error("RemoteStart failed",id=self.id,error=str(e)); return False
     # ── Commandes publiques ────────────────────────────────────────────────────

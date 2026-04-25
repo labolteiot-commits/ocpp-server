@@ -4,9 +4,11 @@
 # AUCUN if is_technove / elif is_grizzle ici — tout passe par self.profile.<flag>
 from __future__ import annotations
 import asyncio
+import json as _json
 from ocpp.v16 import ChargePoint as OcppChargePoint
 
 from core.charger_profiles import PROFILE_GENERIC, ChargerProfile
+from core.logging import log
 
 from .handlers import HandlersMixin
 from .actions import ActionsMixin
@@ -41,3 +43,24 @@ class ChargePoint(HandlersMixin, ActionsMixin, StateMixin, OcppChargePoint):
         # Sprint 30 Volet C : compteur de samples Current.Import consécutifs en drift
         # dict[connector_id] = int (nb samples au-dessus de expected + 2A)
         self._current_drift_samples: dict = {}
+
+    async def route_message(self, raw_message) -> None:
+        """MED-02 — Détection doublon messageId avant dispatch au handler OCPP.
+        Ferme le WebSocket sur doublon (STEVE-2 : SteVe ferme la session).
+        """
+        try:
+            text = raw_message.decode() if isinstance(raw_message, (bytes, bytearray)) else raw_message
+            msg = _json.loads(text)
+            if isinstance(msg, list) and len(msg) >= 2 and msg[0] == 2:  # CALL
+                message_id = str(msg[1])
+                if not self.server.check_duplicate_message_id(self._connection, message_id):
+                    error_frame = _json.dumps([4, message_id, "GenericError", "Duplicate messageId", {}])
+                    try:
+                        await self._connection.send(error_frame)
+                    except Exception:
+                        pass
+                    await self._connection.close(3002, "Duplicate messageId")
+                    return
+        except Exception as exc:
+            log.warning("route_message duplicate check failed", id=self.id, error=str(exc))
+        await super().route_message(raw_message)

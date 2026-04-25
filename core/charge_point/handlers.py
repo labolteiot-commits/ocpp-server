@@ -158,7 +158,9 @@ class HandlersMixin:
         return call_result.StatusNotification()
 
     async def _send_block_profile(self):
-        """Bug 2 — TxDefaultProfile 0.1A dès Preparing, avant que la tx démarre."""
+        """Bug 2 — TxDefaultProfile 0.1A dès Preparing, avant que la tx démarre.
+        MED-01 : si TxDefaultProfile rejeté, fallback vers ChargePointMaxProfile connector 0.
+        """
         profile = {
             "chargingProfileId": 98,
             "stackLevel": 10,
@@ -171,6 +173,23 @@ class HandlersMixin:
         }
         status = await self.set_charging_profile(connector_id=1, profile=profile)
         log.info("block profile sent", id=self.id, status=status)
+        if status not in ("Accepted",):
+            log.warning("[PROFILE] TxDefaultProfile rejeté — fallback ChargePointMaxProfile",
+                        id=self.id, status=status)
+            fallback = {
+                "chargingProfileId": 98,
+                "stackLevel": 1,
+                "chargingProfilePurpose": "ChargePointMaxProfile",
+                "chargingProfileKind": "Relative",
+                "chargingSchedule": {
+                    "chargingRateUnit": "A",
+                    "chargingSchedulePeriod": [{"startPeriod": 0, "limit": 0.1}],
+                },
+            }
+            status2 = await self.set_charging_profile(connector_id=0, profile=fallback)
+            if status2 not in ("Accepted",):
+                log.error("[PROFILE] Fallback ChargePointMaxProfile rejeté — courant non contrôlé",
+                          id=self.id, status=status2)
 
     async def _fire_auto_schedule(self):
         """POST non-bloquant vers telemetry quand la borne passe en Preparing."""
