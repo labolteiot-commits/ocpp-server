@@ -58546,3 +58546,460 @@
 2026-04-25T11:55:17-0400 INFO GRIZZLE-001: send [3,"28551",{"currentTime":"2026-04-25T15:55:17.328443+00:00"}]
 2026-04-25T11:55:47-0400 INFO GRIZZLE-001: receive message [2,"28552","Heartbeat",{}]
 2026-04-25T11:55:47-0400 INFO GRIZZLE-001: send [3,"28552",{"currentTime":"2026-04-25T15:55:47.168350+00:00"}]
+2026-04-25T11:56:17-0400 INFO GRIZZLE-001: receive message [2,"28553","Heartbeat",{}]
+2026-04-25T11:56:17-0400 INFO GRIZZLE-001: send [3,"28553",{"currentTime":"2026-04-25T15:56:17.103336+00:00"}]
+2026-04-25T11:56:47-0400 INFO GRIZZLE-001: receive message [2,"28554","Heartbeat",{}]
+2026-04-25T11:56:47-0400 INFO GRIZZLE-001: send [3,"28554",{"currentTime":"2026-04-25T15:56:47.093325+00:00"}]
+2026-04-25T11:57:17-0400 INFO GRIZZLE-001: receive message [2,"28555","Heartbeat",{}]
+2026-04-25T11:57:17-0400 INFO GRIZZLE-001: send [3,"28555",{"currentTime":"2026-04-25T15:57:17.095919+00:00"}]
+2026-04-25T11:57:48-0400 INFO GRIZZLE-001: send [2,"57737494-fcd6-4d64-904b-37f56b4177b3","GetConfiguration",{"key":["HeartbeatInterval","MeterValueSampleInterval","AuthorizeRemoteTxRequests","LocalAuthorizeOffline","LocalPreAuthorize","AllowOfflineTxForUnknownId","StopTransactionOnInvalidId","ConnectionTimeOut"]}]
+2026-04-25T11:57:50-0400 INFO GRIZZLE-001: receive message [2,"28556","Heartbeat",{}]
+2026-04-25T11:57:50-0400 INFO GRIZZLE-001: send [3,"28556",{"currentTime":"2026-04-25T15:57:50.606427+00:00"}]
+2026-04-25T11:57:50-0400 INFO GRIZZLE-001: receive message [3, "57737494-fcd6-4d64-904b-37f56b4177b3", {
+	"configurationKey":	[{
+			"key":	"HeartbeatInterval",
+			"readonly":	false,
+			"value":	"30"
+		}, {
+			"key":	"MeterValueSampleInterval",
+			"readonly":	false,
+			"value":	"60"
+		}, {
+			"key":	"AuthorizeRemoteTxRequests",
+			"readonly":	false,
+			"value":	"false"
+		}, {
+			"key":	"LocalAuthorizeOffline",
+			"readonly":	false,
+			"value":	"true"
+		}, {
+			"key":	"LocalPreAuthorize",
+			"readonly":	false,
+			"value":	"true"
+		}, {
+			"key":	"AllowOfflineTxForUnknownId",
+			"readonly":	false,
+			"value":	"true"
+		}, {
+			"key":	"StopTransactionOnInvalidId",
+			"readonly":	false,
+			"value":	"false"
+		}],
+	"unknownKey":	["ConnectionTimeOut"]
+}]
+2026-04-25T11:58:17-0400 INFO GRIZZLE-001: receive message [2,"28557","Heartbeat",{}]
+2026-04-25T11:58:17-0400 INFO GRIZZLE-001: send [3,"28557",{"currentTime":"2026-04-25T15:58:17.089122+00:00"}]
+2026-04-25T11:58:47-0400 INFO GRIZZLE-001: receive message [2,"28558","Heartbeat",{}]
+2026-04-25T11:58:47-0400 INFO GRIZZLE-001: send [3,"28558",{"currentTime":"2026-04-25T15:58:47.240585+00:00"}]
+2026-04-25T11:59:17-0400 INFO GRIZZLE-001: receive message [2,"28559","Heartbeat",{}]
+2026-04-25T11:59:17-0400 INFO GRIZZLE-001: send [3,"28559",{"currentTime":"2026-04-25T15:59:17.308554+00:00"}]
+2026-04-25T11:59:47-0400 INFO GRIZZLE-001: receive message [2,"28560","Heartbeat",{}]
+2026-04-25T11:59:47-0400 INFO GRIZZLE-001: send [3,"28560",{"currentTime":"2026-04-25T15:59:47.414729+00:00"}]
+2026-04-25T12:00:17-0400 INFO GRIZZLE-001: receive message [2,"28561","Heartbeat",{}]
+2026-04-25T12:00:17-0400 INFO GRIZZLE-001: send [3,"28561",{"currentTime":"2026-04-25T16:00:17.582974+00:00"}]
+2026-04-25T12:00:47-0400 INFO GRIZZLE-001: receive message [2,"28562","Heartbeat",{}]
+2026-04-25T12:00:47-0400 INFO GRIZZLE-001: send [3,"28562",{"currentTime":"2026-04-25T16:00:47.087534+00:00"}]
+2026-04-25T12:01:36-0400 INFO GRIZZLE-001: receive message [2,"28563","BootNotification",{
+	"chargePointModel":	"GRU 80A 2024",
+	"chargePointSerialNumber":	"GRU-10000365541",
+	"chargePointVendor":	"UnitedChargers",
+	"firmwareVersion":	"UUGRW000A-03.15.2",
+	"meterType":	"0"
+}]
+2026-04-25T12:01:36-0400 INFO GRIZZLE-001: send [3,"28563",{"currentTime":"2026-04-25T16:01:36.564240+00:00","interval":30,"status":"Accepted"}]
+2026-04-25T12:01:36-0400 INFO GRIZZLE-001: send [2,"5f539123-c5ea-4408-86ef-606126861384","GetConfiguration",{"key":["SupportedFeatureProfiles"]}]
+2026-04-25T12:01:37-0400 INFO GRIZZLE-001: receive message [2,"28564","StatusNotification",{
+	"connectorId":	0,
+	"errorCode":	"NoError",
+	"status":	"Available"
+}]
+2026-04-25T12:01:37-0400 INFO GRIZZLE-001: send [3,"28564",{}]
+2026-04-25T12:01:37-0400 INFO GRIZZLE-001: receive message [2,"28565","StatusNotification",{
+	"connectorId":	1,
+	"errorCode":	"NoError",
+	"status":	"Available"
+}]
+2026-04-25T12:01:37-0400 INFO GRIZZLE-001: send [3,"28565",{}]
+2026-04-25T12:01:37-0400 INFO GRIZZLE-001: receive message [3, "5f539123-c5ea-4408-86ef-606126861384", {
+	"configurationKey":	[{
+			"key":	"SupportedFeatureProfiles",
+			"readonly":	true,
+			"value":	"Core,FirmwareManagement,SmartCharging,RemoteTrigger"
+		}],
+	"unknownKey":	[]
+}]
+2026-04-25T12:01:37-0400 INFO GRIZZLE-001: send [2,"3250f39a-1e66-4957-a066-96198e68d59f","SetChargingProfile",{"connectorId":1,"csChargingProfiles":{"chargingProfileId":99,"stackLevel":0,"chargingProfilePurpose":"TxDefaultProfile","chargingProfileKind":"Absolute","chargingSchedule":{"chargingRateUnit":"A","chargingSchedulePeriod":[{"startPeriod":0,"limit":24.0}]}}}]
+2026-04-25T12:01:38-0400 INFO GRIZZLE-001: receive message [3, "3250f39a-1e66-4957-a066-96198e68d59f", {
+	"status":	"Accepted"
+}]
+2026-04-25T12:01:38-0400 INFO GRIZZLE-001: send [2,"7521e676-1882-4cfd-ae2a-ef7f52aaec22","ChangeAvailability",{"connectorId":1,"type":"Operative"}]
+2026-04-25T12:01:38-0400 INFO GRIZZLE-001: receive message [3, "7521e676-1882-4cfd-ae2a-ef7f52aaec22", {
+	"status":	"Accepted"
+}]
+2026-04-25T12:01:39-0400 INFO GRIZZLE-001: send [2,"6057b7f4-6fe6-45f2-911d-d293825d00f0","TriggerMessage",{"requestedMessage":"StatusNotification","connectorId":1}]
+2026-04-25T12:01:44-0400 INFO GRIZZLE-001: receive message [3, "6057b7f4-6fe6-45f2-911d-d293825d00f0", {
+	"status":	"Accepted"
+}]
+2026-04-25T12:01:44-0400 INFO GRIZZLE-001: receive message [2,"28566","StatusNotification",{
+	"connectorId":	1,
+	"errorCode":	"NoError",
+	"status":	"Available"
+}]
+2026-04-25T12:01:44-0400 INFO GRIZZLE-001: send [3,"28566",{}]
+2026-04-25T12:01:46-0400 INFO GRIZZLE-001: send [2,"eaf2748f-37c0-407b-8e1e-3c47da9ee797","ChangeConfiguration",{"key":"HeartbeatInterval","value":"30"}]
+2026-04-25T12:01:46-0400 INFO GRIZZLE-001: receive message [3, "eaf2748f-37c0-407b-8e1e-3c47da9ee797", {
+	"status":	"Accepted"
+}]
+2026-04-25T12:01:46-0400 INFO GRIZZLE-001: send [2,"53f2699d-73f4-4704-af48-5f2168d65f54","ChangeConfiguration",{"key":"StopTransactionOnEVSideDisconnect","value":"true"}]
+2026-04-25T12:01:46-0400 INFO GRIZZLE-001: receive message [3, "53f2699d-73f4-4704-af48-5f2168d65f54", {
+	"status":	"Accepted"
+}]
+2026-04-25T12:01:46-0400 INFO GRIZZLE-001: send [2,"2952effe-106b-4d58-af7f-3f127fc2f335","ChangeConfiguration",{"key":"ConnectionTimeOut","value":"60"}]
+2026-04-25T12:01:46-0400 INFO GRIZZLE-001: receive message [3, "2952effe-106b-4d58-af7f-3f127fc2f335", {
+	"status":	"NotSupported"
+}]
+2026-04-25T12:01:46-0400 INFO GRIZZLE-001: send [2,"83846f56-e498-4f05-97bc-8a535410cd21","GetConfiguration",{"key":[]}]
+2026-04-25T12:01:48-0400 INFO GRIZZLE-001: receive message [3, "83846f56-e498-4f05-97bc-8a535410cd21", {
+	"configurationKey":	[{
+			"key":	"ChargeProfileMaxStackLevel",
+			"readonly":	true,
+			"value":	"4"
+		}, {
+			"key":	"ChargingScheduleAllowedChargingRateUnit",
+			"readonly":	true,
+			"value":	"Current"
+		}, {
+			"key":	"ChargingScheduleMaxPeriods",
+			"readonly":	true,
+			"value":	"35"
+		}, {
+			"key":	"MaxChargingProfilesInstalled",
+			"readonly":	true,
+			"value":	"12"
+		}, {
+			"key":	"AuthorizeRemoteTxRequests",
+			"readonly":	false,
+			"value":	"false"
+		}, {
+			"key":	"ConnectorPhaseRotation",
+			"readonly":	true,
+			"value":	"NotApplicable"
+		}, {
+			"key":	"HeartbeatInterval",
+			"readonly":	false,
+			"value":	"30"
+		}, {
+			"key":	"ConnectionTimeout",
+			"readonly":	false,
+			"value":	"30"
+		}, {
+			"key":	"LocalAuthorizeOffline",
+			"readonly":	false,
+			"value":	"true"
+		}, {
+			"key":	"LocalPreAuthorize",
+			"readonly":	false,
+			"value":	"true"
+		}, {
+			"key":	"MeterValueSampleInterval",
+			"readonly":	false,
+			"value":	"60"
+		}, {
+			"key":	"NumberOfConnectors",
+			"readonly":	true,
+			"value":	"1"
+		}, {
+			"key":	"ResetRetries",
+			"readonly":	true,
+			"value":	"1"
+		}, {
+			"key":	"StopTransactionOnInvalidId",
+			"readonly":	false,
+			"value":	"false"
+		}, {
+			"key":	"SupportedFeatureProfiles",
+			"readonly":	true,
+			"value":	"Core,FirmwareManagement,SmartCharging,RemoteTrigger"
+		}, {
+			"key":	"UnlockConnectorOnEVSideDisconnect",
+			"readonly":	true,
+			"value":	"false"
+		}, {
+			"key":	"AllowOfflineTxForUnknownId",
+			"readonly":	false,
+			"value":	"true"
+		}, {
+			"key":	"MeterValuesAlignedData",
+			"readonly":	false,
+			"value":	"Temperature"
+		}, {
+			"key":	"ClockAlignedDataInterval",
+			"readonly":	false,
+			"value":	"60"
+		}, {
+			"key":	"GetConfigurationMaxKeys",
+			"readonly":	true,
+			"value":	"34"
+		}, {
+			"key":	"MeterValuesSampledData",
+			"readonly":	false,
+			"value":	"Energy.Active.Import.Register"
+		}, {
+			"key":	"StopTransactionOnEVSideDisconnect",
+			"readonly":	false,
+			"value":	"true"
+		}, {
+			"key":	"StopTxnAlignedData",
+			"readonly":	false,
+			"value":	"Energy.Active.Import.Register"
+		}, {
+			"key":	"StopTxnSampledData",
+			"readonly":	false,
+			"value":	"Energy.Active.Import.Register"
+		}, {
+			"key":	"TrasnsactionMessageAttempts",
+			"readonly":	false,
+			"value":	"1"
+		}, {
+			"key":	"TrasnsactionMessageRetryInterval",
+			"readonly":	false,
+			"value":	"10"
+		}, {
+			"key":	"SupportedFileTransferProtocols",
+			"readonly":	true,
+			"value":	"HTTP,FTP"
+		}, {
+			"key":	"Autostart",
+			"readonly":	false,
+			"value":	"false"
+		}, {
+			"key":	"DipSwitchCurrentLimit",
+			"readonly":	true,
+			"value":	"80"
+		}, {
+			"key":	"ActivationStatus",
+			"readonly":	false,
+			"value":	"0019003a3232500e20363848142B2FF82CA4"
+		}, {
+			"key":	"AuthTag",
+			"readonly":	false,
+			"value":	""
+		}, {
+			"key":	"CertificateStoreMaxLength",
+			"readonly":	true,
+			"value":	"3"
+		}, {
+			"key":	"SecurityProfile",
+			"readonly":	false,
+			"value":	"0"
+		}, {
+			"key":	"SwitchState",
+			"readonly":	true,
+			"value":	"14"
+		}],
+	"unknownKey":	[]
+}]
+2026-04-25T12:01:48-0400 INFO GRIZZLE-001: send [2,"2c8c1969-c513-4309-9e96-a0d65a69046a","GetConfiguration",{"key":[]}]
+2026-04-25T12:01:50-0400 INFO GRIZZLE-001: receive message [3, "2c8c1969-c513-4309-9e96-a0d65a69046a", {
+	"configurationKey":	[{
+			"key":	"ChargeProfileMaxStackLevel",
+			"readonly":	true,
+			"value":	"4"
+		}, {
+			"key":	"ChargingScheduleAllowedChargingRateUnit",
+			"readonly":	true,
+			"value":	"Current"
+		}, {
+			"key":	"ChargingScheduleMaxPeriods",
+			"readonly":	true,
+			"value":	"35"
+		}, {
+			"key":	"MaxChargingProfilesInstalled",
+			"readonly":	true,
+			"value":	"12"
+		}, {
+			"key":	"AuthorizeRemoteTxRequests",
+			"readonly":	false,
+			"value":	"false"
+		}, {
+			"key":	"ConnectorPhaseRotation",
+			"readonly":	true,
+			"value":	"NotApplicable"
+		}, {
+			"key":	"HeartbeatInterval",
+			"readonly":	false,
+			"value":	"30"
+		}, {
+			"key":	"ConnectionTimeout",
+			"readonly":	false,
+			"value":	"30"
+		}, {
+			"key":	"LocalAuthorizeOffline",
+			"readonly":	false,
+			"value":	"true"
+		}, {
+			"key":	"LocalPreAuthorize",
+			"readonly":	false,
+			"value":	"true"
+		}, {
+			"key":	"MeterValueSampleInterval",
+			"readonly":	false,
+			"value":	"60"
+		}, {
+			"key":	"NumberOfConnectors",
+			"readonly":	true,
+			"value":	"1"
+		}, {
+			"key":	"ResetRetries",
+			"readonly":	true,
+			"value":	"1"
+		}, {
+			"key":	"StopTransactionOnInvalidId",
+			"readonly":	false,
+			"value":	"false"
+		}, {
+			"key":	"SupportedFeatureProfiles",
+			"readonly":	true,
+			"value":	"Core,FirmwareManagement,SmartCharging,RemoteTrigger"
+		}, {
+			"key":	"UnlockConnectorOnEVSideDisconnect",
+			"readonly":	true,
+			"value":	"false"
+		}, {
+			"key":	"AllowOfflineTxForUnknownId",
+			"readonly":	false,
+			"value":	"true"
+		}, {
+			"key":	"MeterValuesAlignedData",
+			"readonly":	false,
+			"value":	"Temperature"
+		}, {
+			"key":	"ClockAlignedDataInterval",
+			"readonly":	false,
+			"value":	"60"
+		}, {
+			"key":	"GetConfigurationMaxKeys",
+			"readonly":	true,
+			"value":	"34"
+		}, {
+			"key":	"MeterValuesSampledData",
+			"readonly":	false,
+			"value":	"Energy.Active.Import.Register"
+		}, {
+			"key":	"StopTransactionOnEVSideDisconnect",
+			"readonly":	false,
+			"value":	"true"
+		}, {
+			"key":	"StopTxnAlignedData",
+			"readonly":	false,
+			"value":	"Energy.Active.Import.Register"
+		}, {
+			"key":	"StopTxnSampledData",
+			"readonly":	false,
+			"value":	"Energy.Active.Import.Register"
+		}, {
+			"key":	"TrasnsactionMessageAttempts",
+			"readonly":	false,
+			"value":	"1"
+		}, {
+			"key":	"TrasnsactionMessageRetryInterval",
+			"readonly":	false,
+			"value":	"10"
+		}, {
+			"key":	"SupportedFileTransferProtocols",
+			"readonly":	true,
+			"value":	"HTTP,FTP"
+		}, {
+			"key":	"Autostart",
+			"readonly":	false,
+			"value":	"false"
+		}, {
+			"key":	"DipSwitchCurrentLimit",
+			"readonly":	true,
+			"value":	"80"
+		}, {
+			"key":	"ActivationStatus",
+			"readonly":	false,
+			"value":	"0019003a3232500e20363848142B2FF82CA4"
+		}, {
+			"key":	"AuthTag",
+			"readonly":	false,
+			"value":	""
+		}, {
+			"key":	"CertificateStoreMaxLength",
+			"readonly":	true,
+			"value":	"3"
+		}, {
+			"key":	"SecurityProfile",
+			"readonly":	false,
+			"value":	"0"
+		}, {
+			"key":	"SwitchState",
+			"readonly":	true,
+			"value":	"14"
+		}],
+	"unknownKey":	[]
+}]
+2026-04-25T12:02:06-0400 INFO GRIZZLE-001: receive message [2,"28567","Heartbeat",{}]
+2026-04-25T12:02:06-0400 INFO GRIZZLE-001: send [3,"28567",{"currentTime":"2026-04-25T16:02:06.899219+00:00"}]
+2026-04-25T12:02:36-0400 INFO GRIZZLE-001: receive message [2,"28568","Heartbeat",{}]
+2026-04-25T12:02:36-0400 INFO GRIZZLE-001: send [3,"28568",{"currentTime":"2026-04-25T16:02:36.768372+00:00"}]
+2026-04-25T12:03:06-0400 INFO GRIZZLE-001: receive message [2,"28569","Heartbeat",{}]
+2026-04-25T12:03:06-0400 INFO GRIZZLE-001: send [3,"28569",{"currentTime":"2026-04-25T16:03:06.899938+00:00"}]
+2026-04-25T12:03:36-0400 INFO GRIZZLE-001: receive message [2,"28570","Heartbeat",{}]
+2026-04-25T12:03:36-0400 INFO GRIZZLE-001: send [3,"28570",{"currentTime":"2026-04-25T16:03:36.781310+00:00"}]
+2026-04-25T12:04:06-0400 INFO GRIZZLE-001: receive message [2,"28571","Heartbeat",{}]
+2026-04-25T12:04:07-0400 INFO GRIZZLE-001: send [3,"28571",{"currentTime":"2026-04-25T16:04:06.983027+00:00"}]
+2026-04-25T12:04:37-0400 INFO GRIZZLE-001: receive message [2,"28572","Heartbeat",{}]
+2026-04-25T12:04:37-0400 INFO GRIZZLE-001: send [3,"28572",{"currentTime":"2026-04-25T16:04:37.807607+00:00"}]
+2026-04-25T12:05:07-0400 INFO GRIZZLE-001: receive message [2,"28573","Heartbeat",{}]
+2026-04-25T12:05:07-0400 INFO GRIZZLE-001: send [3,"28573",{"currentTime":"2026-04-25T16:05:07.351408+00:00"}]
+2026-04-25T12:05:36-0400 INFO GRIZZLE-001: receive message [2,"28574","Heartbeat",{}]
+2026-04-25T12:05:37-0400 INFO GRIZZLE-001: send [3,"28574",{"currentTime":"2026-04-25T16:05:36.997682+00:00"}]
+2026-04-25T12:06:08-0400 INFO GRIZZLE-001: send [2,"af763140-1b5a-478d-b446-1903f7f4ea0b","GetConfiguration",{"key":["HeartbeatInterval","MeterValueSampleInterval","AuthorizeRemoteTxRequests","LocalAuthorizeOffline","LocalPreAuthorize","AllowOfflineTxForUnknownId","StopTransactionOnInvalidId","ConnectionTimeOut"]}]
+2026-04-25T12:06:11-0400 INFO GRIZZLE-001: receive message [2,"28575","Heartbeat",{}]
+2026-04-25T12:06:11-0400 INFO GRIZZLE-001: send [3,"28575",{"currentTime":"2026-04-25T16:06:11.062095+00:00"}]
+2026-04-25T12:06:11-0400 INFO GRIZZLE-001: receive message [3, "af763140-1b5a-478d-b446-1903f7f4ea0b", {
+	"configurationKey":	[{
+			"key":	"HeartbeatInterval",
+			"readonly":	false,
+			"value":	"30"
+		}, {
+			"key":	"MeterValueSampleInterval",
+			"readonly":	false,
+			"value":	"60"
+		}, {
+			"key":	"AuthorizeRemoteTxRequests",
+			"readonly":	false,
+			"value":	"false"
+		}, {
+			"key":	"LocalAuthorizeOffline",
+			"readonly":	false,
+			"value":	"true"
+		}, {
+			"key":	"LocalPreAuthorize",
+			"readonly":	false,
+			"value":	"true"
+		}, {
+			"key":	"AllowOfflineTxForUnknownId",
+			"readonly":	false,
+			"value":	"true"
+		}, {
+			"key":	"StopTransactionOnInvalidId",
+			"readonly":	false,
+			"value":	"false"
+		}],
+	"unknownKey":	["ConnectionTimeOut"]
+}]
+2026-04-25T12:06:36-0400 INFO GRIZZLE-001: receive message [2,"28576","Heartbeat",{}]
+2026-04-25T12:06:36-0400 INFO GRIZZLE-001: send [3,"28576",{"currentTime":"2026-04-25T16:06:36.826028+00:00"}]
+2026-04-25T12:07:07-0400 INFO GRIZZLE-001: receive message [2,"28577","Heartbeat",{}]
+2026-04-25T12:07:07-0400 INFO GRIZZLE-001: send [3,"28577",{"currentTime":"2026-04-25T16:07:07.067783+00:00"}]
+2026-04-25T12:07:36-0400 INFO GRIZZLE-001: receive message [2,"28578","Heartbeat",{}]
+2026-04-25T12:07:36-0400 INFO GRIZZLE-001: send [3,"28578",{"currentTime":"2026-04-25T16:07:36.827210+00:00"}]
+2026-04-25T12:08:06-0400 INFO GRIZZLE-001: receive message [2,"28579","Heartbeat",{}]
+2026-04-25T12:08:06-0400 INFO GRIZZLE-001: send [3,"28579",{"currentTime":"2026-04-25T16:08:06.829494+00:00"}]
+2026-04-25T12:08:37-0400 INFO GRIZZLE-001: receive message [2,"28580","Heartbeat",{}]
+2026-04-25T12:08:37-0400 INFO GRIZZLE-001: send [3,"28580",{"currentTime":"2026-04-25T16:08:37.319226+00:00"}]
+2026-04-25T12:09:07-0400 INFO GRIZZLE-001: receive message [2,"28581","Heartbeat",{}]
+2026-04-25T12:09:07-0400 INFO GRIZZLE-001: send [3,"28581",{"currentTime":"2026-04-25T16:09:07.118402+00:00"}]
