@@ -1,0 +1,113 @@
+"""
+Harness OCPP — fixtures racine.
+
+Lance pytest depuis /home/lteiot/ocpp-server :
+    source .venv/bin/activate
+    pytest tests/ -v -m "sim_only"          # safe only
+    pytest tests/ -v -m "not requires_vehicle"  # sim + live sans EV
+    pytest tests/ -v -m "requires_vehicle"  # avec véhicule branché
+
+Tous les tests couche 1 sont marqués sim_only.
+"""
+from __future__ import annotations
+
+import asyncio
+import os
+import pytest
+import pytest_asyncio
+
+from tests.helpers.api import OCPPServerAPI
+from tests.helpers.sim import VirtualChargerAPI
+from tests.helpers.db import OCPPDb
+from tests.helpers.rawlog import RawLogTail
+
+
+# ── Configuration (surchargeable via env) ──────────────────────────────────
+OCPP_API_URL = os.environ.get("OCPP_API_URL", "http://localhost:8000")
+SIM_API_URL = os.environ.get("SIM_API_URL", "http://localhost:8001")
+OCPP_DB_PATH = os.environ.get("OCPP_DB_PATH", "/home/lteiot/ocpp-server/data/ocpp.db")
+RAW_LOG_DIR = os.environ.get("OCPP_RAW_LOG_DIR", "/home/lteiot/ocpp-server/logs/ocpp_raw")
+
+SIM_CHARGER_ID = "VIRTUAL-001"
+TECHNOVE_CHARGER_ID = "BORNE-CABANON4"
+GRIZZLE_CHARGER_ID = "GRIZZLE-001"
+
+
+# ── Fixtures function-scoped (évite problème loop session avec pytest-asyncio 1.x) ──
+@pytest_asyncio.fixture
+async def api():
+    async with OCPPServerAPI(OCPP_API_URL) as client:
+        yield client
+
+
+@pytest_asyncio.fixture
+async def sim():
+    async with VirtualChargerAPI(SIM_API_URL) as client:
+        yield client
+
+
+@pytest_asyncio.fixture
+async def db():
+    engine = OCPPDb(OCPP_DB_PATH)
+    yield engine
+    await engine.close()
+
+
+# ── Fixtures fonction (rafraîchies) ───────────────────────────────────────
+@pytest_asyncio.fixture
+async def rawlog_sim():
+    """Tailer positionné en fin de fichier → ne voit que les frames post-open."""
+    path = f"{RAW_LOG_DIR}/{SIM_CHARGER_ID}.log"
+    tail = RawLogTail(path)
+    tail.open()
+    yield tail
+    tail.close()
+
+
+@pytest_asyncio.fixture
+async def clean_sim_state(api: OCPPServerAPI, sim: VirtualChargerAPI):
+    """Garantit sim sans véhicule branché, sans fault, profil clear, mode résidentiel."""
+
+    async def _reset():
+        state = await sim.get_state()
+        if state.get("vehicle_plugged") or state.get("transaction_id"):
+            await sim.plug(False)
+            await asyncio.sleep(2)
+        if state.get("fault_injection"):
+            await sim.inject_fault("clear")
+        # Effacer tout profil residuel (ex: SetCP(limit=0) d'un stop_charging)
+        # pour que le sim reparte à max_current par défaut (80A)
+        try:
+            await api.clear_charging_profile(SIM_CHARGER_ID, connector_id=0)
+            await asyncio.sleep(0.3)
+        except Exception:
+            pass
+        # Restore phase mode residential (en cas de test 3ph)
+        try:
+            await sim.set_phase_mode("residential_l2")
+        except Exception:
+            pass
+
+    await _reset()
+    yield sim
+    await _reset()
+
+
+@pytest_asyncio.fixture
+async def sim_online(api: OCPPServerAPI):
+    """Skip le test si VIRTUAL-001 pas connecté côté serveur OCPP."""
+    charger = await api.get_charger(SIM_CHARGER_ID)
+    # status "AVAILABLE" ou autre sauf "OFFLINE"
+    if (charger.get("status") or "").upper() == "OFFLINE":
+        pytest.skip(f"{SIM_CHARGER_ID} est OFFLINE")
+    return charger
+
+
+# ── Constants exportées pour les tests ────────────────────────────────────
+@pytest.fixture(scope="session")
+def charger_ids():
+    return {
+        "sim": SIM_CHARGER_ID,
+        "technove": TECHNOVE_CHARGER_ID,
+        "grizzle": GRIZZLE_CHARGER_ID,
+    }

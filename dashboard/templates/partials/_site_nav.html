@@ -1,0 +1,75 @@
+{# _site_nav.html — barre de navigation unifiée (primaire + sous-menu contextuel).
+   Variables attendues dans le contexte :
+     nav_section    — 'flotte' | 'admin' | 'tests' | 'api'  (défaut: '')
+     nav_subsection — identifiant court pour surligner le sous-item actif
+                      ex. 'tags', 'firmware', 'capabilities', 'activity',
+                          'config-drifts', 'status-history', 'certification',
+                          'explorer', 'swagger', 'redoc'
+   Styles scopés avec le préfixe .cee-nav-*.  Sans dépendance externe. #}
+<style>
+  .cee-nav-wrap{position:sticky;top:0;z-index:60;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
+  .cee-nav-primary{background:#0b1220;border-bottom:1px solid #1e293b;display:flex;align-items:center;gap:.6rem;padding:.55rem 1rem;flex-wrap:wrap}
+  .cee-nav-brand{font-size:.98rem;font-weight:700;color:#38bdf8;display:flex;align-items:center;gap:.35rem;margin-right:.75rem;white-space:nowrap}
+  .cee-nav-brand small{color:#64748b;font-weight:500;font-size:.72rem;margin-left:.25rem;letter-spacing:.02em}
+  .cee-nav-links{display:flex;gap:.25rem;flex-wrap:wrap}
+  .cee-nav-links a{color:#94a3b8;text-decoration:none;padding:5px 12px;border-radius:6px;font-size:.82rem;font-weight:600;border:1px solid transparent;transition:all .15s;white-space:nowrap;display:inline-flex;align-items:center;gap:.35rem}
+  .cee-nav-links a:hover{background:#1e293b;color:#e2e8f0}
+  .cee-nav-links a.active{background:#1e3a8a;color:#93c5fd;border-color:#1e3a8a}
+  .cee-nav-spacer{flex:1 1 auto}
+  .cee-nav-ext{display:flex;gap:.35rem;flex-wrap:wrap}
+  .cee-nav-ext a{color:#64748b;text-decoration:none;font-size:.72rem;padding:4px 9px;border:1px solid #1e293b;border-radius:5px;font-weight:600;white-space:nowrap}
+  .cee-nav-ext a:hover{color:#e2e8f0;border-color:#334155;background:#1e293b}
+
+  .cee-nav-sub{background:#111a2e;border-bottom:1px solid #1e293b;padding:.4rem 1rem;display:flex;gap:.35rem;flex-wrap:wrap;align-items:center;overflow-x:auto}
+  .cee-nav-sub-label{color:#64748b;font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-right:.35rem;white-space:nowrap}
+  .cee-nav-sub a{color:#94a3b8;text-decoration:none;padding:4px 10px;border-radius:5px;font-size:.78rem;font-weight:500;border:1px solid #1e293b;transition:all .15s;white-space:nowrap;display:inline-flex;align-items:center;gap:.3rem}
+  .cee-nav-sub a:hover{background:#1e293b;color:#e2e8f0;border-color:#334155}
+  .cee-nav-sub a.active{background:#0e223f;color:#93c5fd;border-color:#1e3a8a}
+</style>
+<div class="cee-nav-wrap">
+  <nav class="cee-nav-primary" aria-label="Navigation principale">
+    <div class="cee-nav-brand">&#9889; OCPP <small>1.6J</small></div>
+    <div class="cee-nav-links">
+      <a href="/"{% if nav_section|default('') == 'flotte' %} class="active"{% endif %} title="Dashboard flotte en temps réel">&#128200; Flotte</a>
+      <a href="/admin/tags"{% if nav_section|default('') == 'admin' %} class="active"{% endif %} title="Administration (tags, firmware, drifts, etc.)">&#128295; Admin</a>
+      <a href="/admin/certification"{% if nav_section|default('') == 'tests' %} class="active"{% endif %} title="Suites de tests de conformité OCPP 1.6J">&#129514; Tests</a>
+      <a href="/api-explorer"{% if nav_section|default('') == 'api' %} class="active"{% endif %} title="API Explorer (Swagger, ReDoc, JSON)">&#128268; API</a>
+    </div>
+    <div class="cee-nav-spacer"></div>
+    <div class="cee-nav-ext">
+      <a href="/docs" target="_blank" rel="noopener">Swagger</a>
+      <a href="/redoc" target="_blank" rel="noopener">ReDoc</a>
+      <a href="/openapi.json" target="_blank" rel="noopener">JSON</a>
+    </div>
+  </nav>
+
+  {% if nav_section|default('') == 'flotte' %}
+  <nav class="cee-nav-sub" aria-label="Sous-menu flotte">
+    <span class="cee-nav-sub-label">Flotte</span>
+    <a href="/"{% if nav_subsection|default('') == 'dashboard' %} class="active"{% endif %}>Dashboard</a>
+  </nav>
+  {% elif nav_section|default('') == 'admin' %}
+  <nav class="cee-nav-sub" aria-label="Sous-menu administration">
+    <span class="cee-nav-sub-label">Admin</span>
+    <a href="/admin/tags"{% if nav_subsection|default('') == 'tags' %} class="active"{% endif %}>Tags (whitelist)</a>
+    <a href="/admin/capabilities"{% if nav_subsection|default('') == 'capabilities' %} class="active"{% endif %}>Capabilities</a>
+    <a href="/admin/config-drifts"{% if nav_subsection|default('') == 'config-drifts' %} class="active"{% endif %}>Config drifts</a>
+    <a href="/admin/firmware"{% if nav_subsection|default('') == 'firmware' %} class="active"{% endif %}>Firmware</a>
+    <a href="/admin/status-history"{% if nav_subsection|default('') == 'status-history' %} class="active"{% endif %}>Status history</a>
+    <a href="/admin/activity"{% if nav_subsection|default('') == 'activity' %} class="active"{% endif %}>Activity log</a>
+  </nav>
+  {% elif nav_section|default('') == 'tests' %}
+  <nav class="cee-nav-sub" aria-label="Sous-menu tests">
+    <span class="cee-nav-sub-label">Tests</span>
+    <a href="/admin/certification"{% if nav_subsection|default('') == 'certification' %} class="active"{% endif %}>Certification OCPP 1.6J</a>
+  </nav>
+  {% elif nav_section|default('') == 'api' %}
+  <nav class="cee-nav-sub" aria-label="Sous-menu API">
+    <span class="cee-nav-sub-label">API</span>
+    <a href="/api-explorer"{% if nav_subsection|default('') == 'explorer' %} class="active"{% endif %}>Explorer</a>
+    <a href="/docs" target="_blank" rel="noopener">Swagger UI</a>
+    <a href="/redoc" target="_blank" rel="noopener">ReDoc</a>
+    <a href="/openapi.json" target="_blank" rel="noopener">OpenAPI JSON</a>
+  </nav>
+  {% endif %}
+</div>

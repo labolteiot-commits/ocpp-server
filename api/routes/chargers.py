@@ -42,6 +42,8 @@ class ChargerOut(BaseModel):
     default_max_amps:   Optional[float]
     remote_start_delay: Optional[float]
     local_id_tag:       Optional[str]
+    heartbeat_interval: Optional[int] = None  # A2 : override par borne (NULL = profile default)
+    supported_profiles: Optional[str] = None  # S31 Volet B : CSV des SupportedFeatureProfiles OCPP
     created_at:         datetime
     connectors:         list[ConnectorOut] = []
 
@@ -69,6 +71,8 @@ class ChargerUpdate(BaseModel):
     default_max_amps:   Optional[float] = None
     remote_start_delay: Optional[float] = None
     local_id_tag:       Optional[str]   = None
+    # A2 : override heartbeat par borne (appliqué au prochain BootNotification)
+    heartbeat_interval: Optional[int]   = None
 
 
 # ─── Endpoints ───────────────────────────────────────────
@@ -154,6 +158,14 @@ async def update_charger(
         charger.remote_start_delay = data.remote_start_delay
     if data.local_id_tag is not None:
         charger.local_id_tag = data.local_id_tag
+    if data.heartbeat_interval is not None:
+        # Validation : OCPP 1.6 §4.6 — interval en secondes, positif
+        if data.heartbeat_interval < 5 or data.heartbeat_interval > 86400:
+            raise HTTPException(
+                status_code=422,
+                detail="heartbeat_interval doit être entre 5 et 86400 secondes"
+            )
+        charger.heartbeat_interval = data.heartbeat_interval
 
     await db.commit()
 
@@ -207,6 +219,17 @@ async def update_charger(
         cp = request.app.state.ocpp_server.get_charger(charger_id)
         if cp:
             cp._local_id_tag = data.local_id_tag
+
+    # A2 : push live de HeartbeatInterval via ChangeConfiguration si connectée
+    if data.heartbeat_interval is not None:
+        cp = request.app.state.ocpp_server.get_charger(charger_id)
+        if cp:
+            cp._heartbeat_interval = data.heartbeat_interval
+            asyncio.create_task(cp.change_configuration(
+                "HeartbeatInterval", str(data.heartbeat_interval)
+            ))
+            log.info("HeartbeatInterval — push live via ChangeConfiguration",
+                     id=charger_id, interval=data.heartbeat_interval)
 
     # Recharger avec les connectors (db.refresh ne charge pas les relations)
     result = await db.execute(

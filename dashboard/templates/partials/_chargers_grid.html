@@ -1,0 +1,89 @@
+{# _chargers_grid.html — grille des bornes (1 carte par borne) #}
+  <!-- Cartes bornes -->
+  <div class="section-title">Bornes de recharge</div>
+  <div class="chargers-grid" id="chargers-grid">
+    {% for charger in chargers %}
+    {% set connected = charger.id in connected_chargers %}
+    <div class="charger-card {% if connected %}connected{% endif %}" id="card-{{ charger.id }}">
+
+      <div class="ch-header">
+        <div>
+          <div class="ch-id">
+            {{ charger.id }}
+            {% if charger.boot_lock %}
+            <span class="lock-pill lock-on">&#128274; Verrouillage auto</span>
+            {% else %}
+            <span class="lock-pill lock-off">&#128275; Démarrage libre</span>
+            {% endif %}
+          </div>
+          <div class="ch-meta">{{ charger.manufacturer or '—' }} · {{ charger.model or '—' }} · {{ charger.ocpp_protocol }}</div>
+          {% if charger.ip_address %}<div class="ch-ip">{{ charger.ip_address }}</div>{% endif %}
+          <div class="ch-cfg">
+            {% if charger.default_max_amps %}Courant max : {{ charger.default_max_amps | int }} A{% else %}Courant : illimité{% endif %}
+          </div>
+        </div>
+        <span class="badge b-{{ charger.status.value.lower() }}" id="status-{{ charger.id }}">{{ charger.status.value }}</span>
+      </div>
+
+      <div class="conn-bar {% if connected %}on{% else %}off{% endif %}" id="connbar-{{ charger.id }}">
+        <span class="conn-dot {% if connected %}on{% else %}off{% endif %}" id="dot-{{ charger.id }}"></span>
+        <span id="connlbl-{{ charger.id }}">{% if connected %}WebSocket connecté{% else %}Hors ligne — commandes indisponibles{% endif %}</span>
+      </div>
+
+      <div class="metrics-grid">
+        <div class="metric-box" id="powerbox-{{ charger.id }}">
+          <div class="metric-lbl">Puissance</div>
+          <div class="metric-val" id="m-power-{{ charger.id }}" style="color:#38bdf8">— W</div>
+          <div class="metric-sub" id="m-current-{{ charger.id }}"></div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-lbl">Session</div>
+          <div class="metric-val" id="m-session-{{ charger.id }}" style="color:#34d399">— kWh</div>
+          <div class="metric-sub" id="m-voltage-{{ charger.id }}"></div>
+        </div>
+      </div>
+
+      <div class="connectors" id="connectors-{{ charger.id }}">
+        {% for c in charger.connectors if c.connector_id > 0 %}
+        <div class="connector">
+          <div class="cl">Connecteur {{ c.connector_id }}</div>
+          <div class="cv" id="cs-{{ charger.id }}-{{ c.connector_id }}">{{ c.status.value }}</div>
+        </div>
+        {% else %}
+        <div class="connector"><div class="cl">En attente de connexion</div></div>
+        {% endfor %}
+      </div>
+
+      <div class="total-badge" id="total-{{ charger.id }}">Total livré : — kWh</div>
+      <div class="tx-info" id="tx-{{ charger.id }}">Aucune session active</div>
+      <div class="hb-time" id="hb-{{ charger.id }}">
+        Heartbeat : {% if charger.last_heartbeat %}{{ charger.last_heartbeat.strftime('%H:%M:%S') }}{% else %}—{% endif %}
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-start"   id="btn-start-{{ charger.id }}"   onclick="openStartModal('{{ charger.id }}')"  {% if not connected %}disabled{% endif %}>&#9654; Démarrer</button>
+        <button class="btn btn-stop"    id="btn-stop-{{ charger.id }}"    onclick="openStopModal('{{ charger.id }}')"   {% if not connected %}disabled{% endif %}>&#9646; Arrêter</button>
+        <button class="btn btn-cut btn-sm"     id="btn-cut-{{ charger.id }}"     onclick="openCutModal('{{ charger.id }}')"      {% if not connected %}disabled{% endif %}>&#9889; Couper charge</button>
+        <button class="btn btn-restore btn-sm" id="btn-restore-{{ charger.id }}" onclick="openRestoreModal('{{ charger.id }}')"  {% if not connected %}disabled{% endif %}>&#9889; Rétablir charge</button>
+      </div>
+
+      <div class="actions-row2">
+        <button class="btn btn-avail btn-sm"   id="btn-avail-{{ charger.id }}"   onclick="setAvail('{{ charger.id }}',true)"   {% if not connected %}disabled{% endif %}>&#10003; Dispo</button>
+        <button class="btn btn-unavail btn-sm" id="btn-unavail-{{ charger.id }}" onclick="setAvail('{{ charger.id }}',false)"  {% if not connected %}disabled{% endif %}>&#8856; Hors service</button>
+        <button class="btn btn-unlock btn-sm"  id="btn-unlock-{{ charger.id }}"  onclick="unlock('{{ charger.id }}')"          {% if not connected %}disabled{% endif %}>&#128275; Unlock</button>
+        <button class="btn btn-reset btn-sm"   id="btn-reset-{{ charger.id }}"   onclick="doReset('{{ charger.id }}')"         {% if not connected %}disabled{% endif %}>&#8635; Reset</button>
+        <button class="btn btn-cfg btn-sm"     id="btn-cfg-{{ charger.id }}"
+          onclick="openCfgModal('{{ charger.id }}','{{ charger.manufacturer or '' }}','{{ charger.model or '' }}')"
+          {% if not connected %}disabled{% endif %}>&#9881; Config</button>
+        <button class="btn btn-edit btn-sm"
+          onclick="openEditModal('{{ charger.id }}','{{ charger.boot_lock|lower }}','{{ charger.default_max_amps or '' }}')">&#9998; Éditer</button>
+      </div>
+
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <p>Aucune borne enregistrée.</p>
+      <button class="btn btn-add" style="margin-top:1rem" onclick="openModal('add-modal')">+ Ajouter une borne</button>
+    </div>
+    {% endfor %}
+  </div>

@@ -1,0 +1,90 @@
+"""Tests Resilience (power cycle, reconnexion).
+
+Ces tests demandent une intervention physique du technicien.
+"""
+from __future__ import annotations
+
+import asyncio
+from datetime import datetime, timedelta, timezone
+
+from certification import catalog
+from certification.catalog import TestCase, TestResult
+from certification.helpers import TestContext
+
+
+async def _run_power_cycle_mid_idle(ctx: TestContext) -> TestResult:
+    cp = ctx.get_cp()
+    if cp is None:
+        return TestResult(
+            status="failed",
+            message="Borne hors ligne — impossible de tester la reconnexion",
+        )
+    # Demande au technicien de couper l'alim puis rebrancher
+    resp = await ctx.prompt_technician(
+        "Coupe l'alimentation de la borne pendant 10s (breaker / prise), "
+        "puis rebranche. Clique 'Prêt' une fois la borne rebranchée. "
+        "'Sauter' si tu n'as pas l'accès physique.",
+        timeout_s=300,
+        buttons=["Prêt", "Sauter"],
+    )
+    if resp in ("skip", "Sauter"):
+        return TestResult(
+            status="skipped",
+            message="Technicien a sauté — pas d'accès physique à la borne",
+        )
+    if resp in ("abort", "timeout"):
+        return TestResult(
+            status="failed",
+            message=f"Prompt technicien : {resp}",
+        )
+
+    # Attend la reconnexion : cherche un BootNotification récent
+    since = datetime.now(timezone.utc) - timedelta(minutes=3)
+    row = await ctx.wait_for_activity(
+        action="BootNotification",
+        since=since,
+        timeout_s=120,
+        poll_s=2.0,
+    )
+    details = {"reboot_detected": row is not None}
+    if row is None:
+        # Peut-être pas de BootNot mais un simple Heartbeat reprenant
+        hb = await ctx.wait_for_activity(
+            action="Heartbeat", since=since, timeout_s=30, poll_s=2.0
+        )
+        details["fallback_heartbeat"] = hb is not None
+        if hb is None:
+            return TestResult(
+                status="failed",
+                message="Aucun BootNotification ni Heartbeat après power cycle (2 min)",
+                details=details,
+                recommendation="Vérifier que la borne redémarre + se reconnecte au serveur OCPP.",
+            )
+        return TestResult(
+            status="passed",
+            message="Borne a repris les Heartbeats (pas de BootNot — reconnexion soft)",
+            details=details,
+        )
+    # Vérifie que la borne est online
+    cp2 = ctx.get_cp()
+    details["online_after_reboot"] = cp2 is not None
+    return TestResult(
+        status="passed",
+        message="BootNotification reçu après power cycle — borne opérationnelle",
+        details=details,
+    )
+
+
+catalog.register(
+    TestCase(
+        name="resil.power_cycle_mid_idle",
+        category="Resilience",
+        title="Power cycle mid-idle",
+        description="Demande un power cycle physique puis vérifie la reconnexion OCPP (BootNotification / Heartbeat).",
+        run=_run_power_cycle_mid_idle,
+        requires_power_cycle=True,
+        estimated_seconds=180,
+        suites={"full"},
+        ocpp_ref="§3.1 Connection setup",
+    )
+)

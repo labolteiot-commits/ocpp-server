@@ -1,0 +1,199 @@
+{% extends "_admin_base.html" %}
+{% set active = 'locallist' %}
+{% block title %}Admin — Local Auth List{% endblock %}
+{% block content %}
+<h2>LocalAuthList — synchronisation whitelist ↔ bornes</h2>
+<p class="muted" style="margin-bottom:1rem">
+  OCPP 1.6J §5.3 / §6.9 / §6.11 — Permet aux bornes d'autoriser des idTags <strong>hors-ligne</strong>
+  (sans Authorize vers le serveur). La liste côté serveur (<code class="inline">ocpp_tags</code>) est
+  poussée aux bornes supportant le profil <code class="inline">LocalAuthListManagement</code> via
+  <code class="inline">SendLocalList</code>, et la version locale peut être vérifiée via
+  <code class="inline">GetLocalListVersion</code>.
+</p>
+
+<div class="card">
+  <h3>Statut whitelist par borne</h3>
+  <div class="filters">
+    <button class="btn btn-ghost" onclick="loadStatus()">Rafraîchir</button>
+    <span class="muted">Les colonnes <em>server_version</em> et <em>charger_version</em> doivent matcher après une sync réussie.</span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Borne</th><th>Profil LAL</th><th>Server version</th><th>Charger version</th>
+        <th>Dernière sync</th><th>Statut OCPP</th><th>Type</th><th>Tags envoyés</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="ll_body"><tr><td colspan="9" class="empty">Chargement…</td></tr></tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h3>Sync manuelle</h3>
+  <div class="form-row">
+    <label>Borne *</label>
+    <select id="sync_charger"></select>
+  </div>
+  <div class="form-row">
+    <label>Type</label>
+    <select id="sync_type">
+      <option value="Full">Full (remplace toute la liste)</option>
+      <option value="Differential">Differential (patch incrémental)</option>
+    </select>
+  </div>
+  <div class="form-row">
+    <label></label>
+    <div>
+      <button class="btn btn-primary" onclick="syncOne()">Sync cette borne</button>
+      <button class="btn btn-ghost" onclick="syncAll()">Sync toutes (auto-filter LAL)</button>
+    </div>
+  </div>
+  <p class="muted" style="margin-top:.5rem">
+    La liste envoyée est construite automatiquement à partir de
+    <a href="/admin/tags" style="color:#38bdf8">/admin/tags</a> (uniquement les tags actifs non expirés).
+  </p>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+let CHARGERS = [];    // Liste complète (objets) pour lire supported_profiles
+let LAL_IDS  = [];    // IDs des bornes qui supportent LocalAuthListManagement
+
+async function loadChargers() {
+  try {
+    const data = await api('GET', '/api/chargers/');
+    CHARGERS = (data.chargers || data || []);
+    LAL_IDS = CHARGERS.filter(c =>
+      (c.supported_profiles || '').split(',').map(s => s.trim()).includes('LocalAuthListManagement')
+    ).map(c => c.id);
+    // Dropdown sync
+    const sel = document.getElementById('sync_charger');
+    sel.innerHTML = '<option value="">-- choisir --</option>' +
+      CHARGERS.map(c => {
+        const lal = (c.supported_profiles || '').includes('LocalAuthListManagement') ? '' : ' (LAL absent)';
+        return `<option value="${escapeHtml(c.id)}">${escapeHtml(c.id)}${lal}</option>`;
+      }).join('');
+  } catch(e) { showToast('Bornes: ' + e.message, true); }
+}
+
+function statusBadge(s) {
+  const st = (s || '').toLowerCase();
+  if (st === 'accepted') return 'badge-green';
+  if (st === 'notsupported') return 'badge-grey';
+  if (st === 'offline') return 'badge-amber';
+  if (st === 'failed' || st === 'rejected') return 'badge-red';
+  return 'badge-blue';
+}
+
+async function loadStatus() {
+  const tb = document.getElementById('ll_body');
+  tb.innerHTML = '<tr><td colspan="9" class="empty">Chargement…</td></tr>';
+  try {
+    // Récupère tous les statuts persistés
+    const bulk = await api('GET', '/api/commands/local-list-status');
+    // Index par charger_id
+    const byId = {};
+    (bulk || []).forEach(s => byId[s.charger_id] = s);
+
+    // Pour chaque borne, si elle supporte LAL, tenter de lire la version côté borne
+    const rows = [];
+    for (const c of CHARGERS) {
+      const supportsLAL = (c.supported_profiles || '').includes('LocalAuthListManagement');
+      const s = byId[c.id] || {};
+      let chargerVersion = null;
+      if (supportsLAL) {
+        try {
+          const rr = await api('GET', '/api/commands/local-list/version/' + encodeURIComponent(c.id));
+          chargerVersion = rr.list_version;
+        } catch(e) { /* best-effort */ }
+      }
+      rows.push({
+        id: c.id,
+        supportsLAL,
+        server_version: s.server_version || 0,
+        charger_version: chargerVersion,
+        last_sync_at: s.last_sync_at || null,
+        last_sync_status: s.last_sync_status || null,
+        last_sync_type: s.last_sync_type || null,
+        tag_count_sent: s.tag_count_sent,
+      });
+    }
+
+    if (rows.length === 0) {
+      tb.innerHTML = '<tr><td colspan="9" class="empty">Aucune borne enregistrée</td></tr>';
+      return;
+    }
+    tb.innerHTML = rows.map(r => {
+      const lalBadge = r.supportsLAL
+        ? '<span class="badge badge-green">supporté</span>'
+        : '<span class="badge badge-grey">absent</span>';
+      const match = (r.charger_version !== null && r.charger_version === r.server_version);
+      const vBadge = r.supportsLAL
+        ? (match
+            ? '<span class="badge badge-green" style="margin-left:6px">sync</span>'
+            : (r.charger_version !== null
+                ? '<span class="badge badge-amber" style="margin-left:6px">drift</span>'
+                : '<span class="badge badge-grey" style="margin-left:6px">offline</span>'))
+        : '';
+      const statusBtn = r.last_sync_status
+        ? `<span class="badge ${statusBadge(r.last_sync_status)}">${escapeHtml(r.last_sync_status)}</span>`
+        : '<span class="muted">-</span>';
+      return `<tr>
+        <td class="mono">${escapeHtml(r.id)}</td>
+        <td>${lalBadge}</td>
+        <td class="mono">${r.server_version}</td>
+        <td class="mono">${r.charger_version !== null ? r.charger_version : '<span class="muted">-</span>'} ${vBadge}</td>
+        <td class="muted">${fmtDate(r.last_sync_at)}</td>
+        <td>${statusBtn}</td>
+        <td class="muted">${escapeHtml(r.last_sync_type || '-')}</td>
+        <td class="muted">${r.tag_count_sent !== null && r.tag_count_sent !== undefined ? r.tag_count_sent : '-'}</td>
+        <td class="actions-cell">
+          ${r.supportsLAL ? `<button class="btn btn-primary" onclick="quickSync('${escapeHtml(r.id)}','Full')">Sync Full</button>` : ''}
+        </td>
+      </tr>`;
+    }).join('');
+  } catch(e) {
+    tb.innerHTML = '<tr><td colspan="9" class="empty">Erreur: ' + escapeHtml(e.message) + '</td></tr>';
+  }
+}
+
+async function syncOne() {
+  const cid = document.getElementById('sync_charger').value;
+  const type = document.getElementById('sync_type').value;
+  if (!cid) { showToast('Borne requise', true); return; }
+  try {
+    const data = await api('POST', '/api/commands/sync-local-list/' + encodeURIComponent(cid)
+                           + '?update_type=' + encodeURIComponent(type));
+    const st = data.status || 'inconnu';
+    const cls = (st === 'Accepted') ? '' : true;
+    showToast(`${cid} → ${st} (v=${data.list_version || '?'}, tags=${data.tag_count || '?'})`, cls === true && st !== 'Accepted');
+    loadStatus();
+  } catch(e) { showToast('Erreur: ' + e.message, true); }
+}
+
+async function quickSync(cid, type) {
+  try {
+    const data = await api('POST', '/api/commands/sync-local-list/' + encodeURIComponent(cid)
+                           + '?update_type=' + encodeURIComponent(type));
+    showToast(`${cid} → ${data.status || '?'} (v=${data.list_version || '?'})`);
+    loadStatus();
+  } catch(e) { showToast('Erreur ' + cid + ': ' + e.message, true); }
+}
+
+async function syncAll() {
+  if (LAL_IDS.length === 0) { showToast('Aucune borne ne supporte LocalAuthListManagement', true); return; }
+  if (!confirm('Sync Full vers ' + LAL_IDS.length + ' borne(s) : ' + LAL_IDS.join(', ') + ' ?')) return;
+  let ok = 0, fail = 0;
+  for (const cid of LAL_IDS) {
+    try {
+      const d = await api('POST', '/api/commands/sync-local-list/' + encodeURIComponent(cid) + '?update_type=Full');
+      if (d.status === 'Accepted') ok++; else fail++;
+    } catch(e) { fail++; }
+  }
+  showToast(`Sync terminée : ${ok}/${LAL_IDS.length} OK, ${fail} échec(s)`);
+  loadStatus();
+}
+
+(async () => { await loadChargers(); await loadStatus(); })();
+</script>
+{% endblock %}

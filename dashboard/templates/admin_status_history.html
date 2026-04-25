@@ -1,0 +1,102 @@
+{% extends "_admin_base.html" %}
+{% set active = 'status' %}
+{% block title %}Admin — Status history (S31){% endblock %}
+{% block content %}
+<h2>StatusNotification — timeline (§4.8)</h2>
+<p class="muted" style="margin-bottom:1rem">Sprint 31 Volet C — chaque StatusNotification reçu est persisté dans <code class="inline">status_notifications</code>. Utile pour audit d'un Faulted, diagnostic d'une borne qui oscille, ou corrélation avec un incident.</p>
+
+<div class="card">
+  <div class="filters">
+    <label>Borne :
+      <select id="h_charger" onchange="loadHistory()"></select>
+    </label>
+    <label>Connecteur :
+      <select id="h_connector" onchange="loadHistory()">
+        <option value="">Tous</option>
+        <option value="0">0 (borne)</option>
+        <option value="1">1</option>
+        <option value="2">2</option>
+      </select>
+    </label>
+    <label>Depuis :
+      <input type="datetime-local" id="h_since">
+    </label>
+    <label>Limite :
+      <input type="number" id="h_limit" min="1" max="1000" value="100" style="width:80px">
+    </label>
+    <button class="btn btn-ghost" onclick="loadHistory()">Rafraîchir</button>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Reçu</th><th>Connecteur</th><th>Status</th><th>Error code</th>
+        <th>Info</th><th>Vendor</th><th>Timestamp borne</th>
+      </tr>
+    </thead>
+    <tbody id="hist_body"><tr><td colspan="7" class="empty">Sélectionne une borne</td></tr></tbody>
+  </table>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+let CHARGERS = [];
+
+async function loadChargers() {
+  try {
+    const data = await api('GET', '/api/chargers/');
+    CHARGERS = (data.chargers || data || []).map(c => c.id || c.charger_id || c);
+    const opts = CHARGERS.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+    document.getElementById('h_charger').innerHTML = '<option value="">-- choisir --</option>' + opts;
+  } catch(e) { showToast('Impossible de charger les bornes: ' + e.message, true); }
+}
+
+function statusBadge(s) {
+  const st = (s || '').toLowerCase();
+  if (st === 'available') return 'badge-green';
+  if (st === 'faulted') return 'badge-red';
+  if (st === 'charging' || st === 'preparing' || st === 'finishing') return 'badge-amber';
+  if (st === 'unavailable' || st === 'offline') return 'badge-grey';
+  return 'badge-blue';
+}
+
+async function loadHistory() {
+  const cid = document.getElementById('h_charger').value;
+  const conn = document.getElementById('h_connector').value;
+  const since = document.getElementById('h_since').value;
+  const limit = document.getElementById('h_limit').value || 100;
+  const tb = document.getElementById('hist_body');
+  if (!cid) {
+    tb.innerHTML = '<tr><td colspan="7" class="empty">Sélectionne une borne</td></tr>';
+    return;
+  }
+  const qs = new URLSearchParams();
+  qs.set('limit', limit);
+  if (conn !== '') qs.set('connector_id', conn);
+  if (since) qs.set('since', new Date(since).toISOString());
+  try {
+    const rows = await api('GET',
+      '/api/commands/status-history/' + encodeURIComponent(cid) + '?' + qs.toString());
+    if (!rows || rows.length === 0) {
+      tb.innerHTML = '<tr><td colspan="7" class="empty">Aucun événement</td></tr>';
+      return;
+    }
+    tb.innerHTML = rows.map(x => {
+      const vendor = [x.vendor_id, x.vendor_error_code].filter(Boolean).join(' / ');
+      return `<tr>
+        <td class="muted">${fmtDate(x.received_at)}</td>
+        <td class="mono">${x.connector_id}</td>
+        <td><span class="badge ${statusBadge(x.status)}">${escapeHtml(x.status)}</span></td>
+        <td class="mono">${escapeHtml(x.error_code || '-')}</td>
+        <td>${escapeHtml(x.info || '-')}</td>
+        <td class="mono">${escapeHtml(vendor || '-')}</td>
+        <td class="muted">${fmtDate(x.timestamp)}</td>
+      </tr>`;
+    }).join('');
+  } catch(e) {
+    tb.innerHTML = '<tr><td colspan="7" class="empty">Erreur: ' + escapeHtml(e.message) + '</td></tr>';
+  }
+}
+
+(async () => { await loadChargers(); })();
+</script>
+{% endblock %}

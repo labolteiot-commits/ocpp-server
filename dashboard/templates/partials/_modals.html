@@ -1,0 +1,280 @@
+{# _modals.html — 7 modals : start, stop, cut, restore, cfg, edit, add #}
+<!-- ══════════════════════════════════════════════════════
+     Modal — Démarrer une session
+══════════════════════════════════════════════════════ -->
+<div class="modal-bg" id="start-modal">
+  <div class="modal">
+    <h3>&#9654; Démarrer une session</h3>
+    <input type="hidden" id="start-cid">
+    <div class="form-group"><label>Borne</label><input type="text" id="start-cid-lbl" disabled></div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Connecteur</label>
+        <input type="number" id="start-conn" value="1" min="1" max="8">
+      </div>
+      <div class="form-group">
+        <label>Badge / ID Tag</label>
+        <input type="text" id="start-tag" value="DASHBOARD">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Limite courant (A) — laisser vide = défaut de la borne</label>
+      <input type="number" id="start-amps" placeholder="ex: 24" min="6" max="48">
+      <div class="hint" id="start-amps-hint"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="closeModals()">Annuler</button>
+      <button class="btn btn-start" onclick="submitStart()">Démarrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     Modal — Arrêter une session
+══════════════════════════════════════════════════════ -->
+<div class="modal-bg" id="stop-modal">
+  <div class="modal">
+    <h3>&#9646; Arrêter une session</h3>
+    <input type="hidden" id="stop-cid">
+    <div class="form-group"><label>Borne</label><input type="text" id="stop-cid-lbl" disabled></div>
+    <div class="info-box info">
+      <strong>Transaction ID</strong> — numéro unique assigné au démarrage de la session.
+      Utilisez le bouton <strong>🔍 Détecter</strong> pour le trouver automatiquement.
+    </div>
+    <div class="form-group">
+      <label>Transaction ID</label>
+      <div class="input-with-btn">
+        <input type="number" id="stop-txid" placeholder="ex: 7" min="1">
+        <button class="btn btn-detect btn-sm" onclick="detectTxId()" type="button">&#128269; Détecter</button>
+      </div>
+      <div class="hint" id="stop-tx-hint">Cliquez sur Détecter pour trouver la session active.</div>
+    </div>
+    <div class="form-group">
+      <label>Verrouiller après l'arrêt</label>
+      <select id="stop-lock">
+        <option value="true">Oui — évite redémarrage automatique (recommandé)</option>
+        <option value="false">Non — la borne peut redémarrer si câble branché</option>
+      </select>
+    </div>
+    <div class="info-box warn">
+      &#9888; Si le véhicule reste branché et redémarre quand même, utilisez <strong>⚡ Couper charge</strong>.
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="closeModals()">Annuler</button>
+      <button class="btn btn-stop" onclick="submitStop()">Arrêter la session</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     Modal — Couper la charge
+══════════════════════════════════════════════════════ -->
+<div class="modal-bg" id="cut-modal">
+  <div class="modal">
+    <h3>&#9889; Couper la charge</h3>
+    <input type="hidden" id="cut-cid">
+    <div class="form-group"><label>Borne</label><input type="text" id="cut-cid-lbl" disabled></div>
+    <div class="info-box warn">
+      Impose une limite de <strong>0A</strong> via <code>SetChargingProfile</code>.
+      La puissance est coupée immédiatement même si une session OCPP est active.
+    </div>
+    <div class="info-box tip">Pour reprendre la charge, utilisez <strong>⚡ Rétablir charge</strong>.</div>
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="closeModals()">Annuler</button>
+      <button class="btn btn-cut" onclick="submitCut()">Couper la charge</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     Modal — Rétablir la charge
+══════════════════════════════════════════════════════ -->
+<div class="modal-bg" id="restore-modal">
+  <div class="modal">
+    <h3>&#9889; Rétablir la charge</h3>
+    <input type="hidden" id="restore-cid">
+    <div class="form-group"><label>Borne</label><input type="text" id="restore-cid-lbl" disabled></div>
+    <div class="info-box tip">Retire la limite de courant. La charge reprend au courant spécifié.</div>
+    <div class="form-group">
+      <label>Courant de rétablissement (A)</label>
+      <input type="number" id="restore-amps" value="24" min="1" max="48">
+      <div class="hint" id="restore-amps-hint"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="closeModals()">Annuler</button>
+      <button class="btn btn-restore" onclick="submitRestore()">Rétablir la charge</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     Modal — Configuration avancée
+══════════════════════════════════════════════════════ -->
+<div class="modal-bg" id="cfg-modal">
+  <div class="modal" style="max-width:960px;width:96vw">
+    <h3>&#9881; Configuration — <span id="cfg-cid-lbl"></span></h3>
+    <input type="hidden" id="cfg-cid">
+    <input type="hidden" id="cfg-vendor">
+    <input type="hidden" id="cfg-model">
+
+    <!-- Sélecteur de mapping vendor -->
+    <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.6rem;flex-wrap:wrap">
+      <span style="font-size:.73rem;color:#64748b;white-space:nowrap">Mapping clés :</span>
+      <select id="cfg-vendor-override" onchange="onVendorOverride()"
+        style="background:#0f172a;color:#a78bfa;border:1px solid #334155;border-radius:6px;
+               padding:3px 8px;font-size:.75rem;outline:none;cursor:pointer">
+        <!-- Options injectées par JS -->
+      </select>
+      <span id="cfg-vendor-hint" style="font-size:.68rem;color:#475569;font-style:italic"></span>
+    </div>
+
+    <div class="tab-bar">
+      <button class="tab active" onclick="switchTab('cfg-read')">Lire &amp; Modifier</button>
+      <button class="tab" onclick="switchTab('cfg-write')">Modifier (manuel)</button>
+      <button class="tab" onclick="switchTab('cfg-actions')">Actions avancées</button>
+    </div>
+
+    <!-- ── Onglet Lire & Modifier inline ── -->
+    <div class="tab-panel active" id="cfg-read">
+      <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.6rem;flex-wrap:wrap">
+        <button class="btn btn-cfg btn-sm" onclick="loadConfig()">&#8635; Récupérer config</button>
+        <span id="cfg-count-lbl" style="font-size:.73rem;color:#64748b"></span>
+        <input type="search" id="cfg-search" placeholder="Filtrer clé / valeur / OCPP…"
+          oninput="filterCfgTable()"
+          style="margin-left:auto;background:#0f172a;color:#e2e8f0;border:1px solid #334155;
+                 border-radius:6px;padding:4px 10px;font-size:.77rem;outline:none;min-width:150px">
+      </div>
+      <div style="overflow-x:auto;max-height:62vh;overflow-y:auto;border-radius:6px;border:1px solid #1e293b">
+        <table class="cfg-table" id="cfg-tbl">
+          <thead>
+            <tr>
+              <th>Clé</th>
+              <th title="Cliquez sur une valeur pour la modifier">Valeur actuelle ✏️</th>
+              <th>🔒</th>
+              <th>Correspondance OCPP</th>
+              <th>Explication</th>
+              <th>Valeurs acceptées</th>
+              <th>Statut</th>
+            </tr>
+          </thead>
+          <tbody id="cfg-tbody">
+            <tr><td colspan="7" style="color:#64748b;padding:14px">
+              Cliquez sur <strong>Récupérer config</strong> pour charger la configuration de la borne.
+            </td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── Onglet Modifier manuel ── -->
+    <div class="tab-panel" id="cfg-write">
+      <div class="info-box info" style="margin-bottom:.75rem">
+        Modifie un paramètre directement sur la borne via <code>ChangeConfiguration</code>.
+        Les clés marquées 🔒 sont en lecture seule — la borne rejettera la requête.
+        <br>Conseil : utilisez l'onglet <strong>Lire &amp; Modifier</strong> pour éditer directement dans la liste.
+      </div>
+      <div class="form-group"><label>Clé</label><input type="text" id="cfg-key" placeholder="ex: MeterValueSampleInterval"></div>
+      <div class="form-group"><label>Valeur</label><input type="text" id="cfg-val-input" placeholder="ex: 60"></div>
+      <div id="cfg-write-status" style="min-height:1.4rem;font-size:.8rem;margin:.3rem 0"></div>
+      <div class="modal-actions" style="margin-top:0">
+        <button class="btn btn-cfg" onclick="setConfig()">Appliquer</button>
+      </div>
+    </div>
+
+    <!-- ── Onglet Actions avancées ── -->
+    <div class="tab-panel" id="cfg-actions">
+      <div style="display:flex;flex-direction:column;gap:.5rem">
+        <button class="btn btn-cfg" onclick="doTrigger('MeterValues')">&#9889; Trigger MeterValues</button>
+        <button class="btn btn-cfg" onclick="doTrigger('StatusNotification')">&#128225; Trigger StatusNotification</button>
+        <button class="btn btn-cfg" onclick="doTrigger('BootNotification')">&#128260; Trigger BootNotification</button>
+        <button class="btn btn-cfg" onclick="doTrigger('Heartbeat')">&#128147; Trigger Heartbeat</button>
+        <button class="btn btn-cfg" onclick="doClearCache()">&#128465; Clear Cache</button>
+        <button class="btn btn-cfg" onclick="doGetLocalListVersion()">&#128203; Version liste locale</button>
+        <hr style="border-color:#334155;margin:.25rem 0">
+        <button class="btn btn-reset" onclick="doHardReset()">&#9888; Hard Reset (forcé)</button>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="closeModals()">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     Modal — Éditer borne
+══════════════════════════════════════════════════════ -->
+<div class="modal-bg" id="edit-modal">
+  <div class="modal">
+    <h3>&#9998; Éditer la borne</h3>
+    <input type="hidden" id="edit-cid">
+    <div class="form-group"><label>Borne</label><input type="text" id="edit-cid-lbl" disabled></div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Verrouillage au boot</label>
+        <select id="edit-boot-lock">
+          <option value="true">Oui — inactif jusqu'au démarrage manuel</option>
+          <option value="false">Non — démarre automatiquement</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Courant max par défaut (A)</label>
+        <input type="number" id="edit-max-amps" placeholder="Vide = illimité" min="6" max="48" step="1">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Description</label>
+      <input type="text" id="edit-desc" placeholder="Description optionnelle">
+    </div>
+    <div class="info-box info">Les changements s'appliqueront au <strong>prochain démarrage</strong> de la borne.</div>
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="closeModals()">Annuler</button>
+      <button class="btn btn-start" onclick="submitEdit()">Sauvegarder</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     Modal — Ajouter une borne
+══════════════════════════════════════════════════════ -->
+<div class="modal-bg" id="add-modal">
+  <div class="modal">
+    <h3>+ Ajouter une borne</h3>
+    <div class="form-group">
+      <label>ID de la borne *</label>
+      <input type="text" id="new-id" placeholder="ex: BORNE-GARAGE-01" oninput="updatePreview()">
+      <div class="hint">Doit correspondre exactement à ce que la borne envoie dans BootNotification.</div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Fabricant</label><input type="text" id="new-vendor" placeholder="ex: TechnoVE"></div>
+      <div class="form-group"><label>Modèle</label><input type="text" id="new-model" placeholder="ex: S48"></div>
+    </div>
+    <div class="form-group"><label>Description</label><input type="text" id="new-desc" placeholder="ex: Borne garage principal"></div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Verrouillage au boot</label>
+        <select id="new-boot-lock">
+          <option value="true">Oui — inactif jusqu'au démarrage manuel</option>
+          <option value="false">Non — démarre automatiquement</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Courant max par défaut (A)</label>
+        <input type="number" id="new-max-amps" placeholder="Vide = illimité" min="6" max="48" step="1">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Mot de passe Basic Auth</label>
+      <input type="password" id="new-pass" placeholder="Laisser vide si non requis">
+    </div>
+    <div class="form-group"><label>Notes</label><input type="text" id="new-notes"></div>
+    <div class="url-preview">
+      <strong style="color:#38bdf8">URL à configurer dans la borne :</strong>
+      <code id="url-preview">ws://{{ request.headers.get('host','IP_SERVEUR').split(':')[0] }}:9000/ocpp/[ID_BORNE]</code>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="closeModals()">Annuler</button>
+      <button class="btn btn-add" onclick="submitAdd()">Ajouter</button>
+    </div>
+  </div>
+</div>

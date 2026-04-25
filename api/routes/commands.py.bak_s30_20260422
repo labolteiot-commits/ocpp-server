@@ -1,0 +1,960 @@
+# api/routes/commands.py
+"""
+Routes de commandes OCPP — version corrigée pour TechnoVE et bornes génériques.
+
+CORRECTIONS vs version précédente :
+  BUG-A  set_power_limit : utilisait ChargePointMaxProfile sur connector 0
+         → TechnoVE l'IGNORE. Maintenant utilise set_current_limit() qui
+         choisit TxProfile/TxDefaultProfile/ChargePointMaxProfile selon le profil.
+  BUG-B  Validation du courant max AVANT l'envoi (était après → trop tard)
+  BUG-C  remote_stop : séquence multi-étapes via stop_charging() au lieu de
+         RemoteStopTransaction seul (qui n'arrête pas TechnoVE sans OCPP transaction)
+  BUG-D  set_available relance la charge après un arrêt manuel → doit vérifier
+         _server_lock_active et reset le verrou intentionnellement
+  BUG-E  _lock_after_stop remplacé par stop_charging() qui persiste boot_lock en DB
+         pour survivre aux reboots TechnoVE
+"""
+import asyncio
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from sqlalchemy import desc
+from pydantic import BaseModel
+from typing import Optional
+
+from db.database import get_db
+from db.models import (
+    Session as ChargingSession, SessionStatus, Charger,
+    # Sprint 28 A7
+    Reservation, ReservationStatus, DataTransferLog,
+    # Sprint 29
+    DiagnosticsRequest, ConfigSnapshot,
+)
+from core.logging import log
+
+router = APIRouter()
+
+
+# ── Schémas Pydantic ─────────────────────────────────────────────────────────
+
+class RemoteStartRequest(BaseModel):
+    charger_id:  str
+    connector_id: int            = 1
+    id_tag:      str             = "ADMIN"
+    max_amps:    Optional[float] = None
+
+class RemoteStopRequest(BaseModel):
+    charger_id:     str
+    transaction_id: int
+    lock:           bool = True
+
+class PowerLimitRequest(BaseModel):
+    charger_id: str
+    max_amps:   float
+
+class AvailabilityRequest(BaseModel):
+    charger_id:   str
+    connector_id: int = 1
+
+class UnlockRequest(BaseModel):
+    charger_id:   str
+    connector_id: int = 1
+
+class ResetRequest(BaseModel):
+    charger_id: str
+    reset_type: str = "Soft"
+
+class TriggerRequest(BaseModel):
+    charger_id:   str
+    message:      str
+    connector_id: Optional[int] = None
+
+class ChargingProfileRequest(BaseModel):
+    charger_id:       str
+    connector_id:     int   = 1
+    max_amps:         float
+    duration_seconds: Optional[int] = None
+
+class ClearProfileRequest(BaseModel):
+    charger_id:   str
+    connector_id: int           = 0
+    profile_id:   Optional[int] = None
+
+class ConfigGetRequest(BaseModel):
+    charger_id: str
+    keys:       list[str] = []
+
+class ConfigSetRequest(BaseModel):
+    charger_id: str
+    key:        str
+    value:      str
+
+class ReserveRequest(BaseModel):
+    charger_id:   str
+    connector_id: int = 1
+    id_tag:       str
+    expiry_date:  Optional[str] = None
+
+class CancelReserveRequest(BaseModel):
+    charger_id:     str
+    reservation_id: int
+
+
+# Sprint 29 Volet B — GetDiagnostics
+class GetDiagnosticsRequestBody(BaseModel):
+    charger_id:     str
+    location:       str
+    retries:        Optional[int] = None
+    retry_interval: Optional[int] = None
+    start_time:     Optional[str] = None
+    stop_time:      Optional[str] = None
+
+
+# Sprint 29 Volet D — Expected config
+class ExpectedConfigBody(BaseModel):
+    charger_id: str
+    key:        str
+    value:      str
+
+
+# ── Helper ───────────────────────────────────────────────────────────────────
+
+def _get_cp(request: Request, charger_id: str):
+    cp = request.app.state.ocpp_server.get_charger(charger_id)
+    if not cp:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Borne '{charger_id}' non connectée"
+        )
+    return cp
+
+
+# ── Démarrage de charge ───────────────────────────────────────────────────────
+
+@router.post("/remote-start")
+async def remote_start(body: RemoteStartRequest, request: Request):
+    """Démarre une charge sur la borne."""
+    cp = _get_cp(request, body.charger_id)
+
+    # Lever le verrou serveur avant de démarrer manuellement
+    cp._server_lock_active = False
+
+    success = await cp.remote_start_transaction(
+        connector_id=body.connector_id,
+        id_tag=body.id_tag,
+        max_amps=body.max_amps,
+    )
+    if not success:
+        raise HTTPException(status_code=400, detail="La borne a refusé le démarrage")
+    return {"detail": "Démarrage accepté"}
+
+
+# ── Arrêt de charge ───────────────────────────────────────────────────────────
+
+@router.post("/remote-stop")
+async def remote_stop(
+    body: RemoteStopRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Arrête la charge de façon fiable.
+
+    Utilise stop_charging() qui effectue une séquence multi-étapes :
+    1. SetChargingProfile(limit=0) — coupe le courant physiquement
+    2. RemoteStopTransaction si transaction OCPP active
+    3. ChangeAvailability(Inoperative) si lock=True
+    4. boot_lock=True en DB si lock=True → survit aux reboots
+
+    Pour les sessions synthétiques (transaction_id < 0) : même séquence,
+    sans RemoteStopTransaction (pas de transaction OCPP à arrêter).
+    """
+    cp = _get_cp(request, body.charger_id)
+
+    result = await cp.stop_charging(lock=body.lock)
+
+    log.info("remote_stop — séquence complète",
+             charger_id=body.charger_id,
+             locked=body.lock,
+             method=result.get("method", ""))
+
+    return {
+        "detail": "Arrêt effectué" if result["stopped"] else "Arrêt partiel",
+        "locked": result["locked"],
+        "method": result["method"],
+    }
+
+
+@router.get("/active-transaction/{charger_id}")
+async def get_active_transaction(
+    charger_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Retourne la transaction active d'une borne (OCPP ou synthétique)."""
+    result = await db.execute(
+        select(ChargingSession)
+        .where(ChargingSession.charger_id == charger_id)
+        .where(ChargingSession.status     == SessionStatus.ACTIVE)
+        .order_by(desc(ChargingSession.start_time))
+        .limit(1)
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        return {"transaction_id": None, "id_tag": None, "start_time": None}
+    return {
+        "transaction_id": session.transaction_id,
+        "id_tag":         session.id_tag,
+        "start_time":     session.start_time.isoformat(),
+        "meter_start":    session.meter_start,
+        "is_synthetic":   session.transaction_id is not None and session.transaction_id < 0,
+    }
+
+
+# ── Disponibilité ─────────────────────────────────────────────────────────────
+
+@router.post("/set-available")
+async def set_available(body: AvailabilityRequest, request: Request):
+    """
+    Remet un connecteur en mode Operative.
+
+    IMPORTANT : lève aussi le verrou serveur (_server_lock_active = False)
+    pour que la borne puisse relancer une charge si un véhicule est branché.
+    Sans ça, après un arrêt manuel, la borne resterait bloquée même si
+    l'opérateur veut relancer manuellement.
+    """
+    cp = _get_cp(request, body.charger_id)
+
+    # Lever explicitement le verrou serveur
+    cp._server_lock_active = False
+    cp._boot_lock = False
+
+    # Mettre à jour boot_lock en DB pour que le prochain reboot ne verrouille pas
+    try:
+        from db.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            from sqlalchemy import update as sa_update
+            await db.execute(
+                sa_update(Charger).where(Charger.id == body.charger_id)
+                .values(boot_lock=False)
+            )
+            await db.commit()
+    except Exception as e:
+        log.warning("set_available — mise à jour boot_lock échouée",
+                    id=body.charger_id, error=str(e))
+
+    success = await cp.set_available(body.connector_id)
+    if not success:
+        raise HTTPException(status_code=400, detail="La borne a refusé")
+    return {"detail": f"Connecteur {body.connector_id} remis en disponible, verrou levé"}
+
+
+@router.post("/set-unavailable")
+async def set_unavailable(body: AvailabilityRequest, request: Request):
+    """
+    Met un connecteur en mode Inoperative.
+
+    Note : si une session est en cours, la borne répondra 'Scheduled' et
+    passera Inoperative seulement après la fin de la session.
+    Pour couper immédiatement, utiliser /set-power-limit avec max_amps=0
+    puis /set-unavailable.
+    """
+    cp = _get_cp(request, body.charger_id)
+    success = await cp.set_unavailable(body.connector_id)
+    if not success:
+        raise HTTPException(status_code=400, detail="La borne a refusé")
+    return {"detail": f"Connecteur {body.connector_id} mis hors service"}
+
+
+@router.post("/unlock")
+async def unlock_connector(body: UnlockRequest, request: Request):
+    """A6 — Déverrouille mécaniquement un connecteur (§6.30).
+
+    Utile quand le verrou reste coincé après un StopTransaction.
+    Réponse typique de la borne : Unlocked / UnlockFailed / NotSupported.
+    Le câble est considéré débranché par l'EV-side seulement si le verrou
+    cède physiquement — pas une garantie logicielle.
+    """
+    cp = _get_cp(request, body.charger_id)
+    status = await cp.unlock_connector(body.connector_id)
+    if status == "Failed":
+        raise HTTPException(status_code=400, detail="Déverrouillage échoué")
+    return {"detail": f"Connecteur {body.connector_id} déverrouillé", "status": status}
+
+
+# ── A5 : ChangeAvailability explicite (connector_id=0 = toute la borne) ──────
+
+class ChangeAvailabilityRequest(BaseModel):
+    charger_id:   str
+    connector_id: int = 0  # 0 = toute la borne (§6.1 OCPP 1.6)
+    operative:    bool = True
+
+
+@router.post("/change-availability")
+async def change_availability(body: ChangeAvailabilityRequest, request: Request):
+    """A5 — ChangeAvailability explicite conforme OCPP 1.6 §6.1.
+
+    connector_id=0 signifie "toute la borne" (tous les connecteurs).
+    Attention : certaines bornes buguées (TechnoVE ancienne) traitent
+    connector_id=0 comme connector_id=1. Vérifier dans logs/ocpp_raw/
+    la réponse exacte de la borne (Accepted / Rejected / Scheduled).
+
+    `operative=True`  → Operative   (disponible)
+    `operative=False` → Inoperative (mise hors service, charge terminée d'abord
+    si une session est en cours → status=Scheduled).
+    """
+    cp = _get_cp(request, body.charger_id)
+    if body.operative:
+        success = await cp.set_available(body.connector_id)
+    else:
+        success = await cp.set_unavailable(body.connector_id)
+    if not success:
+        raise HTTPException(status_code=400, detail="La borne a refusé")
+    state = "Operative" if body.operative else "Inoperative"
+    scope = "toute la borne" if body.connector_id == 0 else f"connecteur {body.connector_id}"
+    return {"detail": f"ChangeAvailability {state} — {scope}"}
+
+
+# ── Système ───────────────────────────────────────────────────────────────────
+
+@router.post("/reset")
+async def reset_charger(body: ResetRequest, request: Request):
+    cp = _get_cp(request, body.charger_id)
+    success = await cp.reset(body.reset_type)
+    if not success:
+        raise HTTPException(status_code=400, detail="La borne a refusé le reset")
+    return {"detail": f"Reset {body.reset_type} accepté"}
+
+
+@router.post("/clear-cache")
+async def clear_cache(body: dict, request: Request):
+    charger_id = body.get("charger_id")
+    if not charger_id:
+        raise HTTPException(status_code=400, detail="charger_id requis")
+    cp = _get_cp(request, charger_id)
+    success = await cp.clear_cache()
+    if not success:
+        raise HTTPException(status_code=400, detail="ClearCache refusé")
+    return {"detail": "Cache vidé"}
+
+
+# ── Configuration ─────────────────────────────────────────────────────────────
+
+@router.post("/config/get")
+async def get_configuration(body: ConfigGetRequest, request: Request):
+    cp = _get_cp(request, body.charger_id)
+    config = await cp.get_configuration(body.keys)
+    return {"charger_id": body.charger_id, "configuration": config}
+
+
+@router.post("/config/set")
+async def set_configuration(body: ConfigSetRequest, request: Request):
+    cp = _get_cp(request, body.charger_id)
+    status = await cp.change_configuration(body.key, body.value)
+    if status == "Failed":
+        raise HTTPException(status_code=400, detail="ChangeConfiguration échoué")
+    if status == "NotSupported":
+        raise HTTPException(status_code=400, detail=f"Clé '{body.key}' non supportée")
+    if status == "Rejected":
+        raise HTTPException(status_code=400, detail=f"Clé '{body.key}' rejetée (read-only?)")
+    return {"detail": f"{body.key} = {body.value}", "status": status}
+
+
+@router.get("/config/cached/{charger_id}")
+async def get_cached_config(charger_id: str, request: Request):
+    cp = _get_cp(request, charger_id)
+    return {"charger_id": charger_id, "configuration": cp._config_cache}
+
+
+# ── Messages déclenchés ───────────────────────────────────────────────────────
+
+@router.post("/trigger")
+async def trigger_message(body: TriggerRequest, request: Request):
+    """A3 — TriggerMessage serveur-initié (§6.28 OCPP 1.6).
+
+    Messages valides OCPP 1.6 :
+      - BootNotification
+      - DiagnosticsStatusNotification
+      - FirmwareStatusNotification
+      - Heartbeat
+      - MeterValues          (connector_id optionnel)
+      - StatusNotification   (connector_id optionnel)
+
+    Réponses borne : Accepted / Rejected / NotImplemented.
+    Utile pour forcer un snapshot état + diagnostic TechnoVE/Grizzl-E
+    (règle §23.10.4 — ne pas présumer qu'elles émettent correctement).
+    """
+    cp = _get_cp(request, body.charger_id)
+    status = await cp.trigger_message(body.message, body.connector_id)
+    if status == "Failed":
+        raise HTTPException(status_code=400, detail="TriggerMessage échoué")
+    return {"detail": f"TriggerMessage {body.message} envoyé", "status": status}
+
+
+# ── Smart Charging ────────────────────────────────────────────────────────────
+
+@router.post("/set-power-limit")
+async def set_power_limit(body: PowerLimitRequest, request: Request):
+    """
+    Impose une limite de courant immédiate sur la borne.
+
+    BUG-A CORRIGÉ : n'utilise plus ChargePointMaxProfile sur connector 0
+    (ignoré par TechnoVE). Utilise set_current_limit() qui choisit la bonne
+    stratégie selon le profil fabricant :
+      - TechnoVE avec session OCPP : TxProfile + transaction_id (effet immédiat)
+      - TechnoVE sans session OCPP : TxDefaultProfile + cycle Inop/Op
+      - Générique : ChargePointMaxProfile sur connector 0
+
+    BUG-B CORRIGÉ : validation AVANT l'envoi du profil.
+    BUG-C CORRIGÉ : max_amps=0 utilise stop_charging() au lieu de juste
+                    un profil 0A qui serait ignoré par TechnoVE.
+    """
+    cp = _get_cp(request, body.charger_id)
+
+    # ── Validation AVANT envoi (était APRÈS dans l'ancienne version) ──────
+    if body.max_amps < 0:
+        raise HTTPException(status_code=422, detail="max_amps ne peut pas être négatif")
+
+    if body.max_amps == 0:
+        # Arrêt complet — utiliser stop_charging() pour garantir l'effet sur TechnoVE
+        result = await cp.stop_charging(lock=True)
+        return {
+            "detail": "Charge coupée et borne verrouillée",
+            "method": result.get("method", ""),
+        }
+
+    # Limiter à la capacité physique de la borne
+    hw_max = cp._default_max_amps
+    if hw_max and body.max_amps > hw_max:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Courant demandé ({body.max_amps:.0f}A) supérieur au maximum configuré "
+                f"pour cette borne ({hw_max:.0f}A). "
+                f"Modifiez 'Courant max' dans les paramètres si vous voulez dépasser cette limite."
+            )
+        )
+
+    # ── Appliquer la limite via la méthode profile-aware ──────────────────
+    status = await cp.set_current_limit(body.max_amps)
+
+    if status == "Failed":
+        raise HTTPException(status_code=400, detail="SetChargingProfile échoué")
+
+    # Lever le verrou serveur si on impose une limite positive
+    # (l'opérateur veut que la borne charge, juste à un courant limité)
+    if getattr(cp, '_server_lock_active', False):
+        cp._server_lock_active = False
+        log.info("set_power_limit — verrou serveur levé (limite positive)", id=cp.id)
+
+    return {
+        "detail": f"Limite imposée à {body.max_amps}A",
+        "status": status,
+    }
+
+
+@router.post("/charging-profile/set")
+async def set_charging_profile_endpoint(
+    body: ChargingProfileRequest, request: Request
+):
+    """Définit un profil de charge explicite."""
+    cp = _get_cp(request, body.charger_id)
+
+    profile = {
+        "charging_profile_id":      1,
+        "stack_level":              0,
+        "charging_profile_purpose": "TxDefaultProfile",
+        "charging_profile_kind":    "Absolute",
+        "charging_schedule": {
+            "charging_rate_unit":        "A",
+            "charging_schedule_period":  [{"start_period": 0, "limit": body.max_amps}],
+        },
+    }
+    if body.duration_seconds:
+        profile["charging_schedule"]["duration"] = body.duration_seconds
+
+    status = await cp.set_charging_profile(body.connector_id, profile)
+    if status == "Failed":
+        raise HTTPException(status_code=400, detail="SetChargingProfile échoué")
+    return {"detail": f"Profil de charge {body.max_amps}A appliqué", "status": status}
+
+
+@router.post("/charging-profile/clear")
+async def clear_charging_profile(body: ClearProfileRequest, request: Request):
+    """A8 — Efface un profil de charge ET invalide le snapshot persisté.
+
+    Sans l'invalidation du snapshot, A9 ré-appliquerait au boot un profil
+    que l'opérateur vient d'effacer → incohérence silencieuse.
+    """
+    cp = _get_cp(request, body.charger_id)
+    status = await cp.clear_charging_profile(
+        connector_id=body.connector_id,
+        profile_id=body.profile_id,
+    )
+    if status == "Failed":
+        raise HTTPException(status_code=400, detail="ClearChargingProfile échoué")
+    return {"detail": "Profil effacé", "status": status}
+
+
+@router.get("/charging-profile/snapshots/{charger_id}")
+async def list_profile_snapshots(
+    charger_id: str,
+    include_expired: bool = False,
+    db: AsyncSession = Depends(get_db),
+):
+    """A9/A10 — Liste les snapshots persistés pour diagnostic (actifs + optionnel expirés)."""
+    from db.models import ChargingProfileSnapshot
+    q = select(ChargingProfileSnapshot).where(
+        ChargingProfileSnapshot.charger_id == charger_id
+    )
+    if not include_expired:
+        q = q.where(ChargingProfileSnapshot.expired_at.is_(None))
+    result = await db.execute(q.order_by(desc(ChargingProfileSnapshot.applied_at)))
+    snapshots = result.scalars().all()
+    return {
+        "charger_id": charger_id,
+        "count": len(snapshots),
+        "snapshots": [
+            {
+                "id": s.id,
+                "connector_id": s.connector_id,
+                "purpose": s.purpose,
+                "applied_at": s.applied_at.isoformat() if s.applied_at else None,
+                "expired_at": s.expired_at.isoformat() if s.expired_at else None,
+                "profile": s.profile_json,
+            }
+            for s in snapshots
+        ],
+    }
+
+
+@router.get("/composite-schedule/{charger_id}/{connector_id}")
+async def get_composite_schedule(
+    charger_id: str,
+    connector_id: int,
+    duration: int = 86400,
+    request: Request = None,
+):
+    """Récupère le planning de charge composite (GetCompositeSchedule)."""
+    cp = _get_cp(request, charger_id)
+    try:
+        from ocpp.v16 import call as ocpp_call
+        resp = await cp.call(ocpp_call.GetCompositeSchedule(
+            connector_id=connector_id,
+            duration=duration,
+        ))
+        return {
+            "status":          resp.status,
+            "connector_id":    getattr(resp, "connector_id", connector_id),
+            "schedule_start":  getattr(resp, "schedule_start", None),
+            "charging_schedule": getattr(resp, "charging_schedule", None),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"GetCompositeSchedule échoué: {e}")
+
+
+# ── Réservation (Sprint 28 A7) ────────────────────────────────────────────────
+#
+# Persistance serveur : chaque ReserveNow génère un `reservation_id` unique
+# côté serveur (max+1 par borne), stocké dans la table `reservations`. Status
+# transitions :
+#   - ACTIVE   : ReserveNow Accepted par la borne
+#   - REJECTED : ReserveNow refusé (Occupied/Faulted/Unavailable)
+#   - USED     : StartTransaction matché (cf. ChargePoint._consume_reservation)
+#   - CANCELLED: CancelReservation explicite
+#   - EXPIRED  : boucle de fond 60s (ocpp_server._reservation_expiry_loop)
+
+@router.post("/reserve")
+async def reserve_now(
+    body: ReserveRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Crée une réservation persistée et appelle ReserveNow sur la borne.
+
+    Retourne `reservation_id` (serveur-généré) à l'appelant — à conserver
+    côté UI pour pouvoir annuler plus tard via /cancel-reserve.
+    """
+    cp = _get_cp(request, body.charger_id)
+    from datetime import datetime, timezone, timedelta
+    from sqlalchemy import func as _sa_func
+
+    now = datetime.now(timezone.utc)
+    # Parse expiry_date (str ISO) → datetime UTC, fallback +1h
+    if body.expiry_date:
+        try:
+            expiry_dt = datetime.fromisoformat(body.expiry_date.replace("Z", "+00:00"))
+            if expiry_dt.tzinfo is None:
+                expiry_dt = expiry_dt.replace(tzinfo=timezone.utc)
+        except Exception:
+            raise HTTPException(status_code=400, detail=f"expiry_date invalide: {body.expiry_date}")
+    else:
+        expiry_dt = now + timedelta(hours=1)
+
+    if expiry_dt <= now:
+        raise HTTPException(status_code=400, detail="expiry_date doit être dans le futur")
+
+    # reservation_id unique par borne : max+1
+    r = await db.execute(
+        select(_sa_func.max(Reservation.reservation_id))
+        .where(Reservation.charger_id == body.charger_id)
+    )
+    next_rid = (r.scalar() or 0) + 1
+
+    # Appel OCPP ReserveNow
+    try:
+        from ocpp.v16 import call as ocpp_call
+        resp = await cp.call(ocpp_call.ReserveNow(
+            connector_id=body.connector_id,
+            expiry_date=expiry_dt.isoformat(),
+            id_tag=body.id_tag,
+            reservation_id=next_rid,
+        ))
+        ocpp_status = getattr(resp, "status", "Unknown")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"ReserveNow échoué: {e}")
+
+    # Persistance — même si Rejected, on garde la ligne pour audit
+    status = ReservationStatus.ACTIVE if ocpp_status == "Accepted" else ReservationStatus.REJECTED
+    res = Reservation(
+        reservation_id=next_rid,
+        charger_id=body.charger_id,
+        connector_id=body.connector_id,
+        id_tag=body.id_tag,
+        expiry_date=expiry_dt,
+        status=status,
+        created_at=now,
+        updated_at=now,
+        ocpp_status=ocpp_status,
+    )
+    db.add(res)
+    try:
+        await db.commit()
+        await db.refresh(res)
+    except Exception as e:
+        await db.rollback()
+        log.error("Reservation insert failed", charger=body.charger_id, error=str(e))
+        raise HTTPException(status_code=500, detail=f"DB insert failed: {e}")
+
+    log.info("ReserveNow",
+             charger=body.charger_id, reservation_id=next_rid,
+             connector=body.connector_id, id_tag=body.id_tag,
+             expiry=expiry_dt.isoformat(), ocpp_status=ocpp_status)
+
+    if ocpp_status != "Accepted":
+        # HTTP 200 quand même — la ligne est persistée avec status=REJECTED
+        return {
+            "detail": f"Réservation refusée par la borne ({ocpp_status})",
+            "status": ocpp_status,
+            "reservation_id": next_rid,
+            "db_status": status.value,
+        }
+
+    return {
+        "detail": "Réservation acceptée",
+        "status": ocpp_status,
+        "reservation_id": next_rid,
+        "db_status": status.value,
+        "expiry_date": expiry_dt.isoformat(),
+    }
+
+
+@router.post("/cancel-reserve")
+async def cancel_reserve(
+    body: CancelReserveRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Annule une réservation : appel OCPP CancelReservation + update DB."""
+    cp = _get_cp(request, body.charger_id)
+
+    # Lookup DB
+    r = await db.execute(
+        select(Reservation).where(
+            Reservation.charger_id == body.charger_id,
+            Reservation.reservation_id == body.reservation_id,
+        )
+    )
+    res = r.scalar_one_or_none()
+    if res is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Réservation {body.reservation_id} introuvable pour {body.charger_id}",
+        )
+    if res.status != ReservationStatus.ACTIVE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Réservation non annulable (status={res.status.value})",
+        )
+
+    # Appel OCPP
+    try:
+        from ocpp.v16 import call as ocpp_call
+        resp = await cp.call(ocpp_call.CancelReservation(
+            reservation_id=body.reservation_id,
+        ))
+        ocpp_status = getattr(resp, "status", "Unknown")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"CancelReservation échoué: {e}")
+
+    # Update DB — même si borne répond NotFound, on marque CANCELLED côté serveur
+    from datetime import datetime, timezone
+    res.status = ReservationStatus.CANCELLED
+    res.updated_at = datetime.now(timezone.utc)
+    res.ocpp_status = (res.ocpp_status or "") + f" | cancel={ocpp_status}"
+    await db.commit()
+
+    log.info("CancelReservation",
+             charger=body.charger_id, reservation_id=body.reservation_id,
+             ocpp_status=ocpp_status)
+
+    return {
+        "detail": "Réservation annulée",
+        "status": ocpp_status,
+        "reservation_id": body.reservation_id,
+        "db_status": ReservationStatus.CANCELLED.value,
+    }
+
+
+@router.get("/reservations/{charger_id}")
+async def list_reservations(
+    charger_id: str,
+    include_inactive: bool = False,
+    db: AsyncSession = Depends(get_db),
+):
+    """Liste les réservations d'une borne. Par défaut, ACTIVE seulement."""
+    stmt = select(Reservation).where(Reservation.charger_id == charger_id)
+    if not include_inactive:
+        stmt = stmt.where(Reservation.status == ReservationStatus.ACTIVE)
+    stmt = stmt.order_by(desc(Reservation.created_at))
+    r = await db.execute(stmt)
+    rows = r.scalars().all()
+    return {
+        "charger_id": charger_id,
+        "count": len(rows),
+        "reservations": [
+            {
+                "reservation_id": x.reservation_id,
+                "connector_id":   x.connector_id,
+                "id_tag":         x.id_tag,
+                "status":         x.status.value,
+                "expiry_date":    x.expiry_date.isoformat() if x.expiry_date else None,
+                "created_at":     x.created_at.isoformat() if x.created_at else None,
+                "updated_at":     x.updated_at.isoformat() if x.updated_at else None,
+                "ocpp_status":    x.ocpp_status,
+            }
+            for x in rows
+        ],
+    }
+
+
+# ── DataTransfer audit (Sprint 28 A7) ─────────────────────────────────────────
+
+@router.get("/data-transfer/logs")
+async def list_data_transfer_logs(
+    charger_id: Optional[str] = None,
+    direction:  Optional[str] = None,
+    limit:      int           = 100,
+    db: AsyncSession = Depends(get_db),
+):
+    """Liste les DataTransfer persistés (audit vendor-specific).
+
+    Filtres optionnels : `charger_id`, `direction` (in/out). Ordre : plus
+    récent d'abord. Limit 1..500 (default 100).
+    """
+    limit = max(1, min(500, limit))
+    stmt = select(DataTransferLog)
+    if charger_id:
+        stmt = stmt.where(DataTransferLog.charger_id == charger_id)
+    if direction in ("in", "out"):
+        stmt = stmt.where(DataTransferLog.direction == direction)
+    stmt = stmt.order_by(desc(DataTransferLog.timestamp)).limit(limit)
+    r = await db.execute(stmt)
+    rows = r.scalars().all()
+    return {
+        "count": len(rows),
+        "logs": [
+            {
+                "id":         x.id,
+                "charger_id": x.charger_id,
+                "direction":  x.direction,
+                "vendor_id":  x.vendor_id,
+                "message_id": x.message_id,
+                "data":       x.data,
+                "response":   x.response,
+                "timestamp":  x.timestamp.isoformat() if x.timestamp else None,
+            }
+            for x in rows
+        ],
+    }
+
+
+# ── Sprint 29 Volet B : GetDiagnostics ───────────────────────────────────────
+
+@router.post("/get-diagnostics")
+async def get_diagnostics(body: GetDiagnosticsRequestBody, request: Request):
+    """Déclenche GetDiagnostics OCPP 1.6J §6.8 + persiste la demande.
+
+    `location` est l'URL d'upload (FTP/HTTP/HTTPS) vers laquelle la borne
+    enverra le fichier. Le suivi d'upload se fait ensuite via
+    DiagnosticsStatusNotification (stocké dans `diagnostics_requests.status`).
+    """
+    cp = _get_cp(request, body.charger_id)
+    result = await cp.get_diagnostics(
+        location=body.location,
+        retries=body.retries,
+        retry_interval=body.retry_interval,
+        start_time=body.start_time,
+        stop_time=body.stop_time,
+    )
+    return {
+        "detail": "GetDiagnostics envoyé",
+        "request_id": result.get("request_id"),
+        "filename": result.get("filename"),
+    }
+
+
+@router.get("/diagnostics/{charger_id}")
+async def list_diagnostics(
+    charger_id: str,
+    limit: int = 20,
+    db: AsyncSession = Depends(get_db),
+):
+    """Historique des 20 (ou N) dernières demandes GetDiagnostics pour une borne."""
+    limit = max(1, min(200, limit))
+    r = await db.execute(
+        select(DiagnosticsRequest)
+        .where(DiagnosticsRequest.charger_id == charger_id)
+        .order_by(desc(DiagnosticsRequest.requested_at))
+        .limit(limit)
+    )
+    rows = r.scalars().all()
+    return {
+        "charger_id": charger_id,
+        "count": len(rows),
+        "requests": [
+            {
+                "id":                x.id,
+                "location":          x.location,
+                "retries":           x.retries,
+                "retry_interval":    x.retry_interval,
+                "start_time":        x.start_time.isoformat() if x.start_time else None,
+                "stop_time":         x.stop_time.isoformat() if x.stop_time else None,
+                "requested_at":      x.requested_at.isoformat() if x.requested_at else None,
+                "filename_returned": x.filename_returned,
+                "status":            x.status,
+                "status_updated_at": x.status_updated_at.isoformat() if x.status_updated_at else None,
+            }
+            for x in rows
+        ],
+    }
+
+
+# ── Sprint 29 Volet D : Config drift monitoring ──────────────────────────────
+
+@router.get("/config-snapshot/{charger_id}")
+async def get_config_snapshot(
+    charger_id: str,
+    watched_only: bool = False,
+    db: AsyncSession = Depends(get_db),
+):
+    """Retourne les clés de config persistées + flag drift (expected != observed)."""
+    stmt = select(ConfigSnapshot).where(ConfigSnapshot.charger_id == charger_id)
+    r = await db.execute(stmt.order_by(ConfigSnapshot.key))
+    rows = r.scalars().all()
+    out = []
+    for s in rows:
+        drift = (
+            s.expected_value is not None
+            and not s.readonly
+            and s.observed_value != s.expected_value
+        )
+        if watched_only:
+            from core.charge_point import ANTI_OVERRIDE_WATCHED_KEYS
+            if s.key not in ANTI_OVERRIDE_WATCHED_KEYS:
+                continue
+        out.append({
+            "key":            s.key,
+            "expected_value": s.expected_value,
+            "observed_value": s.observed_value,
+            "readonly":       s.readonly,
+            "drift":          drift,
+            "drift_count":    s.drift_count,
+            "last_drift_at":  s.last_drift_at.isoformat() if s.last_drift_at else None,
+            "last_heal_at":   s.last_heal_at.isoformat() if s.last_heal_at else None,
+            "captured_at":    s.captured_at.isoformat() if s.captured_at else None,
+        })
+    return {"charger_id": charger_id, "count": len(out), "keys": out}
+
+
+@router.post("/config-expected")
+async def set_config_expected(body: ExpectedConfigBody, request: Request):
+    """Fixe une valeur attendue pour une clé + push ChangeConfiguration.
+
+    Si observed_value dérive ensuite (cloud fabricant intrusif), la boucle
+    _config_drift_loop remet expected via ChangeConfiguration toutes les 5 min.
+    """
+    cp = _get_cp(request, body.charger_id)
+    status = await cp.set_expected_config(body.key, body.value)
+    if status == "Failed":
+        raise HTTPException(
+            status_code=400,
+            detail=f"ChangeConfiguration échoué pour {body.key}",
+        )
+    return {
+        "detail": f"{body.key} = {body.value} (expected)",
+        "status": status,
+    }
+
+
+@router.get("/config-drifts")
+async def list_config_drifts(
+    since: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Derniers drifts détectés (tous chargers). Filtre optionnel `since` (ISO)."""
+    from datetime import datetime as _dt, timezone as _tz
+    stmt = select(ConfigSnapshot).where(
+        ConfigSnapshot.drift_count > 0,
+    )
+    if since:
+        try:
+            since_dt = _dt.fromisoformat(since.replace("Z", "+00:00"))
+            if since_dt.tzinfo is None:
+                since_dt = since_dt.replace(tzinfo=_tz.utc)
+            stmt = stmt.where(ConfigSnapshot.last_drift_at >= since_dt)
+        except Exception:
+            raise HTTPException(status_code=400, detail=f"since invalide: {since}")
+    r = await db.execute(stmt.order_by(desc(ConfigSnapshot.last_drift_at)))
+    rows = r.scalars().all()
+    return {
+        "count": len(rows),
+        "drifts": [
+            {
+                "charger_id":     s.charger_id,
+                "key":            s.key,
+                "expected_value": s.expected_value,
+                "observed_value": s.observed_value,
+                "drift_count":    s.drift_count,
+                "last_drift_at":  s.last_drift_at.isoformat() if s.last_drift_at else None,
+                "last_heal_at":   s.last_heal_at.isoformat() if s.last_heal_at else None,
+            }
+            for s in rows
+        ],
+    }
+
+
+# ── Statut du verrou serveur ──────────────────────────────────────────────────
+
+@router.get("/lock-status/{charger_id}")
+async def get_lock_status(charger_id: str, request: Request):
+    """Retourne l'état du verrou serveur (pour debug dashboard)."""
+    cp = _get_cp(request, charger_id)
+    return {
+        "charger_id":          charger_id,
+        "server_lock_active":  getattr(cp, '_server_lock_active', False),
+        "boot_lock":           cp._boot_lock,
+        "connector_status":    cp._connector1_status,
+        "active_transactions": list(cp._active_transactions.keys()),
+        "profile":             cp.profile.name if hasattr(cp, 'profile') else "unknown",
+    }

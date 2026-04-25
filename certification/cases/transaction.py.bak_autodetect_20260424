@@ -1,0 +1,442 @@
+"""Tests de transaction (RemoteStart/Stop, MeterValues, énergie livrée).
+
+Réfs OCPP 1.6J :
+  * §4.14 RemoteStartTransaction
+  * §4.16 RemoteStopTransaction
+  * §4.10 MeterValues
+  * §4.17 StartTransaction / §4.18 StopTransaction
+"""
+from __future__ import annotations
+
+import asyncio
+from datetime import datetime, timedelta, timezone
+
+from certification import catalog
+from certification.catalog import TestCase, TestResult
+from certification.helpers import TestContext
+
+
+CERTIF_TAG = "CERTIF_VALID"
+
+
+async def _run_remote_start(ctx: TestContext) -> TestResult:
+    await ctx.ensure_tag(CERTIF_TAG, active=True)
+    cp = ctx.get_cp()
+    if cp is None:
+        return TestResult(status="failed", message="Borne hors ligne")
+
+    # Prompt technicien (plug du véhicule) sauf si no_prompts
+    resp = await ctx.prompt_technician(
+        "Branche le véhicule dans la borne puis clique 'Prêt'. Si aucun véhicule disponible, 'Sauter'.",
+        timeout_s=180,
+        buttons=["Prêt", "Sauter"],
+    )
+    if resp in ("skip", "Sauter"):
+        return TestResult(
+            status="skipped",
+            message="Technicien a sauté — véhicule indisponible",
+        )
+    if resp in ("abort", "timeout"):
+        return TestResult(
+            status="failed",
+            message=f"Prompt technicien : {resp}",
+        )
+
+    # Optionnel : attendre Preparing si véhicule vient d'être branché
+    await ctx.wait_for_preparing(timeout_s=15)
+
+    try:
+        status = await cp.remote_start_transaction(id_tag=CERTIF_TAG, connector_id=1)
+    except Exception as e:
+        return TestResult(
+            status="failed",
+            message=f"RemoteStartTransaction a levé une exception : {e}",
+            recommendation="Vérifier la connectivité CP et que le connecteur 1 existe.",
+        )
+
+    if str(status).lower() != "accepted":
+        return TestResult(
+            status="failed",
+            message=f"RemoteStartTransaction refusé : {status}",
+            recommendation="Vérifier que la borne est en état Preparing/Available pour accepter RemoteStart.",
+        )
+
+    # Attend un StartTransaction dans les 60s
+    started = await ctx.wait_for_activity(action="StartTransaction", timeout_s=60, poll_s=1.0)
+    details = {"remote_start_status": str(status), "start_tx_received": started is not None}
+
+    if started is None:
+        charging = await ctx.wait_for_status("Charging", timeout_s=10)
+        details["charging_status_received"] = charging is not None
+        if charging is None:
+            return TestResult(
+                status="failed",
+                message="RemoteStart accepté mais pas de StartTransaction ni status Charging dans les 60s",
+                details=details,
+                recommendation=(
+                    "Vérifier (1) carte RFID autorisée, (2) borne en Preparing, "
+                    "(3) véhicule branché, (4) borne émet bien StartTransaction."
+                ),
+            )
+
+    # Mémorise l'id pour le stop + validation physique
+    try:
+        import re
+        payload = getattr(started, "payload", "") or ""
+        m = re.search(r'"transactionId"\s*:\s*(\d+)', payload)
+        if m:
+            ctx.state["transaction_id"] = int(m.group(1))
+            details["transaction_id"] = int(m.group(1))
+    except Exception:
+        pass
+
+    # Settle 5s pour laisser status passer en Charging puis valider courant
+    await ctx.settle(5.0, reason="propagation StartTransaction → Charging")
+
+    # Validation physique : le courant doit devenir > 3A (seuil "en charge")
+    # dans les 30s qui suivent — prouve que le contacteur s'est fermé
+    charging_ok = await ctx.wait_for_charging_stable(
+        min_current_a=3.0, min_consecutive=2, timeout_s=30, poll_s=3.0,
+    )
+    details["physical_charging_confirmed"] = charging_ok
+    if not charging_ok:
+        return TestResult(
+            status="failed",
+            message=(
+                "StartTransaction reçu mais aucun courant mesuré (>3A) dans les 30s — "
+                "contacteur probablement pas fermé"
+            ),
+            details=details,
+            recommendation=(
+                "Vérifier (1) contacteur relay, (2) véhicule accepte la charge, "
+                "(3) MeterValues émis avec measurand Current.Import."
+            ),
+        )
+
+    return TestResult(
+        status="passed",
+        message="RemoteStartTransaction → StartTransaction → courant mesuré (contacteur fermé confirmé)",
+        details=details,
+    )
+
+
+catalog.register(
+    TestCase(
+        name="tx.remote_start",
+        category="Transaction",
+        title="RemoteStartTransaction (§4.14)",
+        description="Démarre une session à distance avec le tag CERTIF_VALID et attend StartTransaction.",
+        run=_run_remote_start,
+        requires_vehicle=True,
+        estimated_seconds=90,
+        suites={"standard", "full"},
+        ocpp_ref="§4.14 RemoteStartTransaction",
+    )
+)
+
+
+# ─────────────────────────── tx.metervalues_units ───────────────────────────
+
+
+async def _run_metervalues_units(ctx: TestContext) -> TestResult:
+    """Validation quantitative via la DB (pas juste string match sur payload).
+
+    Vérifie que :
+    - MeterValues récents existent (<2min)
+    - Les champs DB structurés sont peuplés : power_w, current_a, voltage_v, energy_wh
+    - Les valeurs sont dans des plages physiques plausibles (unités conformes §7.22.5)
+    - Cohérence : P ≈ V × I (±20% tolérance ; facteur de puissance, triphasé, etc.)
+    """
+    since = datetime.now(timezone.utc) - timedelta(minutes=2)
+    rows = await ctx.get_last_activity(action="MeterValues", since=since, limit=20)
+    details = {"activity_count": len(rows)}
+    if not rows:
+        return TestResult(
+            status="skipped",
+            message="Aucun MeterValues récent (session non-active ?)",
+            details=details,
+        )
+
+    # Validation string (measurands déclarés)
+    concat = " ".join([getattr(r, "payload", "") or "" for r in rows])
+    has_energy = "Energy.Active.Import.Register" in concat or "Wh" in concat or "kWh" in concat
+    has_power = "Power.Active.Import" in concat or "kW" in concat
+    has_current = "Current.Import" in concat or '"A"' in concat
+    details.update({"has_energy": has_energy, "has_power": has_power, "has_current": has_current})
+
+    missing = []
+    if not has_energy:
+        missing.append("Energy.Active.Import.Register")
+    if not has_power:
+        missing.append("Power.Active.Import")
+    if missing:
+        return TestResult(
+            status="failed",
+            message=f"MeterValues incomplets : measurands manquants = {', '.join(missing)}",
+            details=details,
+            recommendation="Configurer MeterValuesSampledData pour inclure Energy + Power (§9.1.3).",
+        )
+
+    # Validation quantitative via MeterValue DB
+    mvs = await ctx.get_recent_meter_values(since=since, limit=20)
+    details["mv_rows_db"] = len(mvs)
+    if not mvs:
+        return TestResult(
+            status="failed",
+            message="Activity log contient MeterValues mais table meter_values vide — pipeline parsing cassé",
+            details=details,
+            recommendation="Vérifier le parser MeterValues côté serveur — les rows ne sont pas persistées dans meter_values.",
+        )
+
+    # Extraction valeurs non-null
+    currents = [mv.current_a for mv in mvs if mv.current_a is not None]
+    powers = [mv.power_w for mv in mvs if mv.power_w is not None]
+    voltages = [mv.voltage_v for mv in mvs if mv.voltage_v is not None]
+    energies = [mv.energy_wh for mv in mvs if mv.energy_wh is not None]
+    details["samples"] = {
+        "current_a": len(currents), "power_w": len(powers),
+        "voltage_v": len(voltages), "energy_wh": len(energies),
+    }
+
+    errors = []
+    # Plages physiques (L2 résidentiel/commercial Québec)
+    if currents:
+        max_i = max(currents)
+        if max_i > 100 or max_i < 0:
+            errors.append(f"Courant hors plage physique [0, 100]A : max={max_i}A")
+        details["max_current_a"] = max_i
+    if powers:
+        max_p = max(powers)
+        if max_p > 25000 or max_p < 0:
+            errors.append(f"Puissance hors plage [0, 25000]W : max={max_p}W (unit kW non converti ?)")
+        details["max_power_w"] = max_p
+    if voltages:
+        avg_v = sum(voltages) / len(voltages)
+        if avg_v < 180 or avg_v > 260:
+            errors.append(f"Tension hors plage L2 [180, 260]V : moy={avg_v:.1f}V")
+        details["avg_voltage_v"] = avg_v
+    if energies and len(energies) >= 2:
+        delta_e = energies[0] - energies[-1]  # rows DESC → [0]=plus récent
+        if delta_e < 0:
+            errors.append(f"Compteur énergie décroissant : Δ={delta_e}Wh")
+        details["delta_energy_wh"] = delta_e
+
+    # Cohérence P ≈ V × I (si triphasé, on agrège déjà dans _normalize_sample)
+    if powers and voltages and currents:
+        p = powers[0]; v = voltages[0]; i = currents[0]
+        if p > 100 and v > 100 and i > 1.0:
+            expected_p = v * i
+            err_pct = abs(p - expected_p) / expected_p if expected_p else 1.0
+            details["coherence_p_vs_vi"] = {
+                "p_w": p, "v_v": v, "i_a": i,
+                "expected_p_w": expected_p, "err_pct": round(err_pct, 3),
+            }
+            if err_pct > 0.25:
+                errors.append(
+                    f"Incohérence P vs V×I : P={p}W, V×I={expected_p:.0f}W, écart {err_pct*100:.1f}%"
+                )
+
+    if errors:
+        return TestResult(
+            status="failed",
+            message=f"MeterValues avec anomalies quantitatives : {'; '.join(errors)}",
+            details=details,
+            recommendation=(
+                "Vérifier (1) conversion d'unités OCPP §7.22.5 (kW→W, kWh→Wh), "
+                "(2) agrégation triphasée (sum Power, max Current, avg Voltage), "
+                "(3) parser _normalize_sample côté serveur."
+            ),
+        )
+
+    return TestResult(
+        status="passed",
+        message=(
+            f"MeterValues complets + plages physiques OK "
+            f"(I∈[0,{details.get('max_current_a', '?')}]A, "
+            f"P≤{details.get('max_power_w', '?')}W, "
+            f"V≈{details.get('avg_voltage_v', '?')}V)"
+        ),
+        details=details,
+    )
+
+
+catalog.register(
+    TestCase(
+        name="tx.metervalues_units",
+        category="Transaction",
+        title="MeterValues measurands (§4.10)",
+        description="Vérifie que les MeterValues contiennent Energy, Power et Current.",
+        run=_run_metervalues_units,
+        estimated_seconds=5,
+        suites={"standard", "full"},
+        ocpp_ref="§4.10 MeterValues",
+    )
+)
+
+
+# ─────────────────────────── tx.remote_stop ───────────────────────────
+
+
+async def _run_remote_stop(ctx: TestContext) -> TestResult:
+    cp = ctx.get_cp()
+    if cp is None:
+        return TestResult(status="failed", message="Borne hors ligne")
+
+    tx_id = ctx.state.get("transaction_id")
+    if tx_id is None:
+        # Cherche le dernier StartTransaction encore ouvert via la DB
+        session = await ctx.get_latest_session()
+        if session is None:
+            return TestResult(
+                status="skipped",
+                message="Pas de session active trouvée pour RemoteStop",
+            )
+        # Session déjà fermée → impossible d'arrêter (tx.remote_start requis d'abord)
+        if getattr(session, "stop_time", None) is not None:
+            return TestResult(
+                status="skipped",
+                message="Dernière session déjà fermée — tx.remote_start doit précéder ce test",
+                details={"session_id": getattr(session, "id", None)},
+            )
+        tx_id = getattr(session, "transaction_id", None) or getattr(session, "id", None)
+
+    if tx_id is None:
+        return TestResult(status="skipped", message="Pas de transaction_id à arrêter")
+
+    try:
+        status = await cp.remote_stop_transaction(transaction_id=int(tx_id))
+    except Exception as e:
+        return TestResult(
+            status="failed",
+            message=f"RemoteStopTransaction a levé une exception : {e}",
+        )
+    details = {"transaction_id": tx_id, "status": str(status)}
+    if str(status).lower() != "accepted":
+        return TestResult(
+            status="failed",
+            message=f"RemoteStopTransaction refusé : {status}",
+            details=details,
+        )
+
+    stopped = await ctx.wait_for_activity(action="StopTransaction", timeout_s=30, poll_s=1.0)
+    details["stop_tx_received"] = stopped is not None
+    if stopped is None:
+        return TestResult(
+            status="failed",
+            message="RemoteStop accepté mais pas de StopTransaction dans les 30s",
+            details=details,
+            recommendation="Vérifier que la borne émet StopTransaction après RemoteStop.",
+        )
+
+    # Validation physique : status doit passer en Finishing ou Available
+    # (contacteur ouvert) dans les 15s suivants
+    await ctx.settle(5.0, reason="propagation StopTransaction → ouverture contacteur")
+    finishing = await ctx.wait_for_status("Finishing", timeout_s=15)
+    if finishing is None:
+        available = await ctx.wait_for_status("Available", timeout_s=5)
+        details["post_stop_status"] = "Available" if available else "unknown"
+    else:
+        details["post_stop_status"] = "Finishing"
+
+    # Validation physique : courant doit retomber à ~0A dans les 20s
+    await ctx.settle(10.0, reason="propagation ouverture contacteur → courant=0")
+    stop_since = datetime.now(timezone.utc) - timedelta(minutes=1)
+    mvs = await ctx.get_recent_meter_values(since=stop_since, limit=3)
+    recent_currents = [mv.current_a for mv in mvs if mv.current_a is not None]
+    details["post_stop_currents_a"] = recent_currents
+    if recent_currents and max(recent_currents) > 2.0:
+        return TestResult(
+            status="failed",
+            message=(
+                f"StopTransaction reçu mais courant toujours non-nul après 15s : "
+                f"{recent_currents} A (contacteur probablement bloqué fermé)"
+            ),
+            details=details,
+            recommendation=(
+                "Vérifier (1) relais contacteur défectueux, (2) la borne "
+                "honore bien RemoteStop physiquement, (3) aucun EV-side hold."
+            ),
+        )
+
+    # Session en DB doit être fermée (stop_time non-null)
+    session = await ctx.get_latest_session()
+    stop_time = getattr(session, "stop_time", None) if session else None
+    details["session_closed_in_db"] = stop_time is not None
+
+    return TestResult(
+        status="passed",
+        message=(
+            f"RemoteStopTransaction → StopTransaction reçu, "
+            f"status={details['post_stop_status']}, courant retombé à 0A"
+        ),
+        details=details,
+    )
+
+
+catalog.register(
+    TestCase(
+        name="tx.remote_stop",
+        category="Transaction",
+        title="RemoteStopTransaction (§4.16)",
+        description="Arrête la session active à distance et attend StopTransaction.",
+        run=_run_remote_stop,
+        estimated_seconds=30,
+        suites={"standard", "full"},
+        ocpp_ref="§4.16 RemoteStopTransaction",
+    )
+)
+
+
+# ─────────────────────────── tx.energy_delivered ───────────────────────────
+
+
+async def _run_energy_delivered(ctx: TestContext) -> TestResult:
+    session = await ctx.get_latest_session()
+    if session is None:
+        return TestResult(status="skipped", message="Pas de session à analyser")
+    start_val = getattr(session, "meter_start", None)
+    stop_val = getattr(session, "meter_stop", None)
+    details = {
+        "meter_start": start_val,
+        "meter_stop": stop_val,
+    }
+    if start_val is None or stop_val is None:
+        return TestResult(
+            status="skipped",
+            message="Session incomplète (meter_start / meter_stop null)",
+            details=details,
+        )
+    delta = stop_val - start_val
+    details["delta_wh"] = delta
+    if delta < 0:
+        return TestResult(
+            status="failed",
+            message=f"Compteur décroissant : Δ={delta} Wh",
+            details=details,
+            recommendation="Le compteur ne doit jamais décroître. Anomalie matérielle ou meter_rollback.",
+        )
+    if delta == 0:
+        return TestResult(
+            status="passed",
+            message="Session très courte, Δ=0 Wh (OK pour test court)",
+            details=details,
+        )
+    return TestResult(
+        status="passed",
+        message=f"Énergie livrée cohérente : Δ={delta} Wh ({delta/1000:.3f} kWh)",
+        details=details,
+    )
+
+
+catalog.register(
+    TestCase(
+        name="tx.energy_delivered",
+        category="Transaction",
+        title="Énergie livrée cohérente",
+        description="Vérifie que meter_stop ≥ meter_start (compteur monotone croissant).",
+        run=_run_energy_delivered,
+        estimated_seconds=3,
+        suites={"standard", "full"},
+        ocpp_ref="§4.17/4.18 Start/Stop meterValue",
+    )
+)

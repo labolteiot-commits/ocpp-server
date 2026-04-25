@@ -1,0 +1,1141 @@
+# core/charge_point.py  — version pilotée par charger_profiles.py
+# Voir charger_profiles.py pour les flags par fabricant.
+# AUCUN if is_technove / elif is_grizzle ici — tout passe par self.profile.<flag>
+from __future__ import annotations
+import asyncio
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Optional
+from ocpp.routing import on
+from ocpp.v16 import ChargePoint as OcppChargePoint
+from ocpp.v16 import call_result, call
+from ocpp.v16.enums import (
+    Action, RegistrationStatus, AuthorizationStatus,
+    RemoteStartStopStatus, ResetStatus, ResetType,
+    MessageTrigger, AvailabilityType, DataTransferStatus,
+)
+from sqlalchemy import select, update
+from sqlalchemy import func as sa_func
+from db.database import AsyncSessionLocal
+from db.models import (
+    Charger, Connector, Session, MeterValue, Event,
+    ChargerStatus, ConnectorStatus, SessionStatus,
+    ChargingProfileSnapshot,
+)
+from core.charger_profiles import ChargerProfile, PROFILE_GENERIC, detect_profile, profile_summary
+from core.logging import log
+if TYPE_CHECKING:
+    from core.ocpp_server import OCPPServer
+
+VEHICLE_PRESENT_STATUSES = {"Charging","Preparing","Finishing","SuspendedEV","SuspendedEVSE"}
+STATUS_WAIT_TIMEOUT = 15.0
+
+class ChargePoint(OcppChargePoint):
+    def __init__(self, charge_point_id, websocket, server, ip_address="unknown"):
+        super().__init__(charge_point_id, websocket)
+        self.server = server
+        self.ip_address = ip_address
+        self.profile: ChargerProfile = PROFILE_GENERIC
+        self._active_transactions: dict = {}
+        self._next_transaction_id: int = 1
+        self._last_energy: dict = {}
+        self._config_cache: dict = {}
+        self._active_measurands: list = []
+        self._boot_lock: bool = True
+        self._default_max_amps = None
+        self._connector1_status: str = "Unknown"
+        self._meter_poll_task = None
+        self._synthetic_session_id = None
+        self._remote_start_delay: float = 1.0
+        self._local_id_tag: str = "ADMIN"
+        self._boot_tasks: set = set()
+        self._status_received = asyncio.Event()
+        self._remote_start_lock = asyncio.Lock()
+        self._auto_start_pending: bool = False
+        self._server_lock_active: bool = False   # BUG-2 FIX : évite AttributeError
+        self._scheduler_applied_amps: float | None = None  # tracker pour le scheduler
+
+    # ── Utilitaires ──────────────────────────────────────────────────────────
+    def _add_task(self, coro):
+        task = asyncio.create_task(coro)
+        self._boot_tasks.add(task)
+        task.add_done_callback(self._boot_tasks.discard)
+        return task
+
+    def _cancel_boot_tasks(self):
+        for t in list(self._boot_tasks):
+            if not t.done(): t.cancel()
+        self._boot_tasks.clear()
+
+    async def _log_event(self, event_type, payload):
+        try:
+            async with AsyncSessionLocal() as db:
+                db.add(Event(charger_id=self.id, type=event_type, payload=payload,
+                             timestamp=datetime.now(timezone.utc)))
+                await db.commit()
+        except Exception as e:
+            log.warning("_log_event failed", id=self.id, error=str(e))
+
+    async def _safe_call(self, request, *, context=""):
+        """Wrapper qui absorbe les exceptions JSON si lenient_json_parsing=True (Grizzl-E 5.x)."""
+        try:
+            return await self.call(request)
+        except Exception as e:
+            if self.profile.lenient_json_parsing:
+                log.warning(f"Réponse invalide ignorée ({context})", id=self.id, error=str(e))
+                return None
+            raise
+
+    @staticmethod
+    def _normalize_status(s):
+        return {"available":"Available","preparing":"Preparing","charging":"Charging",
+                "suspendedev":"SuspendedEV","suspendedevse":"SuspendedEVSE",
+                "finishing":"Finishing","reserved":"Reserved","unavailable":"Unavailable",
+                "faulted":"Faulted"}.get(s.lower(), s)
+
+    # ── A4 : Parsing MeterValue conforme OCPP 1.6J §7.22.5 ────────────────────
+    # Mapping measurand → (champ DB, unité de base attendue).
+    _MEASURAND_FIELDS = {
+        "Energy.Active.Import.Register":   ("energy_wh",          "Wh"),
+        "Energy.Active.Export.Register":   ("energy_export_wh",   "Wh"),
+        "Energy.Reactive.Import.Register": ("energy_reactive_wh", "varh"),
+        "Power.Active.Import":             ("power_w",            "W"),
+        "Power.Active.Export":             ("power_export_w",     "W"),
+        "Power.Offered":                   ("power_offered_w",    "W"),
+        "Current.Import":                  ("current_a",          "A"),
+        "Current.Export":                  ("current_export_a",   "A"),
+        "Current.Offered":                 ("current_offered_a",  "A"),
+        "Voltage":                         ("voltage_v",          "V"),
+        "SoC":                             ("soc_percent",        "Percent"),
+        "Temperature":                     ("temperature_c",      "Celsius"),
+        "Frequency":                       ("frequency_hz",       "Hertz"),
+    }
+    # Facteurs vers l'unité de base (W, Wh, A, V). Température gérée à part.
+    _UNIT_MULTIPLIER = {
+        "Wh": 1.0, "kWh": 1000.0,
+        "varh": 1.0, "kvarh": 1000.0,
+        "W": 1.0, "kW": 1000.0,
+        "VA": 1.0, "kVA": 1000.0,
+        "var": 1.0, "kvar": 1000.0,
+        "A": 1.0,
+        "V": 1.0,
+        "Percent": 1.0,
+        "Hertz": 1.0,
+    }
+
+    @classmethod
+    def _normalize_sample(cls, sv: dict):
+        """Convertit un SampledValue en (champ_DB, valeur_base, phase) ou None."""
+        measurand = sv.get("measurand", "Energy.Active.Import.Register")
+        entry = cls._MEASURAND_FIELDS.get(measurand)
+        if not entry:
+            return None
+        field, default_unit = entry
+        try:
+            v = float(sv.get("value"))
+        except (TypeError, ValueError):
+            return None
+        unit = sv.get("unit") or default_unit
+        if field == "temperature_c":
+            if unit in ("K", "Kelvin"):
+                v = v - 273.15
+            elif unit in ("F", "Fahrenheit"):
+                v = (v - 32.0) * 5.0 / 9.0
+            # Celsius → inchangé
+        else:
+            v = v * cls._UNIT_MULTIPLIER.get(unit, 1.0)
+        return field, v, sv.get("phase")
+
+    def _parse_meter_value(self, mv):
+        """
+        Parse un MeterValue OCPP 1.6J en dict normalisé en unités de base (W, Wh, A, V, %, °C).
+
+        - Respecte `unit` (kWh→Wh, kW→W, K/F→°C, etc.).
+        - Ne considère que les contextes Sample.Periodic / Sample.Clock pour
+          l'instantané (les Transaction.Begin/End / Trigger restent accessibles
+          via raw JSON dans MeterValue.raw).
+        - Agrégation 3-phase :
+            * Power   → somme des phases L1+L2+L3
+            * Current → max des phases (limite breaker)
+            * Voltage → moyenne des phases
+          Si un sample composé (pas de `phase`, ou L1-N / L1-L2) existe déjà, il
+          est prioritaire.
+        """
+        result: dict = {}
+        p_by_phase: dict[str, float] = {}
+        i_by_phase: dict[str, float] = {}
+        v_by_phase: dict[str, float] = {}
+
+        for sv in mv.get("sampled_value", []):
+            ctx = sv.get("context", "Sample.Periodic")
+            if ctx not in ("Sample.Periodic", "Sample.Clock"):
+                continue
+            norm = self._normalize_sample(sv)
+            if norm is None:
+                continue
+            field, value, phase = norm
+
+            if phase in {"L1", "L2", "L3"} and field in {"power_w", "current_a", "voltage_v"}:
+                if field == "power_w":
+                    p_by_phase[phase] = value
+                elif field == "current_a":
+                    i_by_phase[phase] = value
+                elif field == "voltage_v":
+                    v_by_phase[phase] = value
+                continue
+            if field not in result:
+                result[field] = value
+
+        if "power_w" not in result and p_by_phase:
+            result["power_w"] = sum(p_by_phase.values())
+        if "current_a" not in result and i_by_phase:
+            result["current_a"] = max(i_by_phase.values())
+        if "voltage_v" not in result and v_by_phase:
+            result["voltage_v"] = sum(v_by_phase.values()) / len(v_by_phase)
+        return result
+
+    # ── A9 : Persistance ChargingProfileSnapshot + replay ─────────────────────
+    # Un snapshot est conservé pour chaque (charger_id, connector_id, purpose).
+    # UPSERT après chaque SetChargingProfile réussi ; replay au boot si différent
+    # de _default_max_amps (le scheduler peut avoir ajusté le profil avant
+    # déconnexion — on ré-applique la dernière valeur connue au reconnect).
+    @staticmethod
+    def _extract_limit_amps(profile_dict: dict) -> float | None:
+        try:
+            periods = profile_dict.get("charging_schedule", {}).get("charging_schedule_period", [])
+            if not periods:
+                return None
+            return float(periods[0].get("limit"))
+        except (TypeError, ValueError, AttributeError):
+            return None
+
+    async def _persist_profile_snapshot(self, connector_id: int, profile_dict: dict) -> None:
+        """UPSERT dernier profil appliqué — ré-utilisé au reconnect (A9)."""
+        purpose = profile_dict.get("charging_profile_purpose")
+        if not purpose:
+            return
+        try:
+            async with AsyncSessionLocal() as db:
+                r = await db.execute(
+                    select(ChargingProfileSnapshot).where(
+                        ChargingProfileSnapshot.charger_id == self.id,
+                        ChargingProfileSnapshot.connector_id == connector_id,
+                        ChargingProfileSnapshot.purpose == purpose,
+                    )
+                )
+                snap = r.scalar_one_or_none()
+                now = datetime.now(timezone.utc)
+                if snap is None:
+                    db.add(ChargingProfileSnapshot(
+                        charger_id=self.id, connector_id=connector_id,
+                        purpose=purpose, profile_json=profile_dict, applied_at=now,
+                    ))
+                else:
+                    snap.profile_json = profile_dict
+                    snap.applied_at = now
+                await db.commit()
+        except Exception as e:
+            log.warning("_persist_profile_snapshot failed",
+                        id=self.id, connector=connector_id, purpose=purpose, error=str(e))
+
+    async def _load_last_profile_snapshot(self) -> dict | None:
+        """Retourne le dernier snapshot pertinent (non expiré) pour le profile actuel."""
+        p = self.profile
+        purpose = "TxDefaultProfile" if p.use_tx_default_profile else "ChargePointMaxProfile"
+        connector_id = p.profile_connector_id
+        try:
+            async with AsyncSessionLocal() as db:
+                r = await db.execute(
+                    select(ChargingProfileSnapshot).where(
+                        ChargingProfileSnapshot.charger_id == self.id,
+                        ChargingProfileSnapshot.connector_id == connector_id,
+                        ChargingProfileSnapshot.purpose == purpose,
+                        # A10 : ignorer les snapshots marqués expirés (clear opérateur)
+                        ChargingProfileSnapshot.expired_at.is_(None),
+                    )
+                )
+                snap = r.scalar_one_or_none()
+                return snap.profile_json if snap else None
+        except Exception as e:
+            log.warning("_load_last_profile_snapshot failed", id=self.id, error=str(e))
+            return None
+
+    async def _expire_profile_snapshots(
+        self,
+        connector_id: int | None = None,
+        profile_id: int | None = None,
+    ) -> int:
+        """A8 — marque les snapshots correspondants comme expirés (audit trail).
+
+        Appelée après un ClearChargingProfile accepté par la borne. Sans ça,
+        A9 ré-appliquerait au boot un profil que l'opérateur a pourtant effacé.
+
+        - connector_id=None → tous les connecteurs de la borne
+        - profile_id=None   → tous les purposes ; sinon match sur profile_json['charging_profile_id']
+        """
+        try:
+            async with AsyncSessionLocal() as db:
+                q = select(ChargingProfileSnapshot).where(
+                    ChargingProfileSnapshot.charger_id == self.id,
+                    ChargingProfileSnapshot.expired_at.is_(None),
+                )
+                if connector_id is not None:
+                    q = q.where(ChargingProfileSnapshot.connector_id == connector_id)
+                r = await db.execute(q)
+                now = datetime.now(timezone.utc)
+                n = 0
+                for snap in r.scalars().all():
+                    if profile_id is not None:
+                        try:
+                            pid = int((snap.profile_json or {}).get("charging_profile_id"))
+                        except (TypeError, ValueError):
+                            pid = None
+                        if pid != profile_id:
+                            continue
+                    snap.expired_at = now
+                    n += 1
+                await db.commit()
+                if n:
+                    log.info("A8 — snapshots expirés",
+                             id=self.id, connector_id=connector_id,
+                             profile_id=profile_id, count=n)
+                return n
+        except Exception as e:
+            log.warning("_expire_profile_snapshots failed",
+                        id=self.id, connector_id=connector_id, error=str(e))
+            return 0
+
+    def _build_charging_profile(self, amps, profile_id=99, purpose=None, stack_level=None):
+        # BUG-1 FIX : charging_profile_id doit être l'entier profile_id, PAS la purpose string
+        purpose_str = purpose or ("TxDefaultProfile" if self.profile.use_tx_default_profile else "ChargePointMaxProfile")
+        sl = stack_level if stack_level is not None else self.profile.profile_stack_level
+        return {
+            "charging_profile_id":      profile_id,       # ← int, pas purpose_str
+            "stack_level":              sl,
+            "charging_profile_purpose": purpose_str,
+            "charging_profile_kind":    "Absolute",
+            "charging_schedule": {
+                "charging_rate_unit":       "A",
+                "charging_schedule_period": [{"start_period": 0, "limit": amps}],
+            },
+        }
+
+    # ── Handlers ─────────────────────────────────────────────────────────────
+    @on(Action.BootNotification)
+    async def on_boot_notification(self, charge_point_vendor, charge_point_model, **kwargs):
+        log.info("BootNotification", id=self.id, vendor=charge_point_vendor, model=charge_point_model)
+        self._cancel_boot_tasks()
+        self._status_received.clear()
+        self._synthetic_session_id = None
+        self._auto_start_pending = False
+        firmware = kwargs.get("firmware_version","")
+        self.profile = detect_profile(charge_point_vendor, charge_point_model, firmware)
+        log.info("Profil détecté", id=self.id, **profile_summary(self.profile))
+        try:
+            async with AsyncSessionLocal() as db:
+                charger = await db.get(Charger, self.id)
+                if charger is None:
+                    charger = Charger(id=self.id, manufacturer=charge_point_vendor,
+                                     model=charge_point_model, firmware_version=firmware,
+                                     ip_address=self.ip_address, status=ChargerStatus.AVAILABLE,
+                                     boot_lock=True)
+                    db.add(charger)
+                else:
+                    charger.manufacturer=charge_point_vendor; charger.model=charge_point_model
+                    charger.firmware_version=firmware or charger.firmware_version
+                    charger.ip_address=self.ip_address; charger.status=ChargerStatus.AVAILABLE
+                self._boot_lock = charger.boot_lock
+                self._default_max_amps = charger.default_max_amps
+                await db.commit()
+            self._remote_start_delay = charger.remote_start_delay if charger.remote_start_delay is not None else self.profile.remote_start_delay
+            self._local_id_tag = charger.local_id_tag or self.profile.local_auth_id_tag
+            # A2 : override heartbeat_interval par borne (sinon fallback profile)
+            self._heartbeat_interval = (
+                charger.heartbeat_interval
+                if getattr(charger, "heartbeat_interval", None)
+                else self.profile.heartbeat_interval
+            )
+        except Exception as e:
+            log.error("BootNotification DB error", id=self.id, error=str(e))
+            self._heartbeat_interval = self.profile.heartbeat_interval
+        self._add_task(self._log_event("BootNotification",{"vendor":charge_point_vendor,"model":charge_point_model,"firmware":firmware,"profile":self.profile.name,"heartbeat_interval":self._heartbeat_interval}))
+        self._add_task(self._post_boot_sequence())
+        self._add_task(self._fetch_configuration())
+        self._add_task(self._init_transaction_id())
+        return call_result.BootNotification(
+            current_time=datetime.now(timezone.utc).isoformat(),
+            interval=self._heartbeat_interval,
+            status=RegistrationStatus.accepted)
+
+    async def _init_transaction_id(self):
+        try:
+            async with AsyncSessionLocal() as db:
+                r = await db.execute(select(sa_func.max(Session.transaction_id))
+                                     .where(Session.charger_id==self.id, Session.transaction_id>0))
+                max_id = r.scalar_one_or_none()
+                if max_id is not None and max_id >= self._next_transaction_id:
+                    self._next_transaction_id = max_id + 1
+                    log.info("TX ID init from DB", id=self.id, next_id=self._next_transaction_id)
+        except Exception as e:
+            log.warning("_init_transaction_id failed", id=self.id, error=str(e))
+
+    @on(Action.Heartbeat)
+    async def on_heartbeat(self, **kwargs):
+        now = datetime.now(timezone.utc)
+        async with AsyncSessionLocal() as db:
+            await db.execute(update(Charger).where(Charger.id==self.id).values(last_heartbeat=now))
+            await db.commit()
+        await self.server.broadcast_heartbeat(self.id, now.isoformat())
+        return call_result.Heartbeat(current_time=now.isoformat())
+
+    @on(Action.StatusNotification)
+    async def on_status_notification(self, connector_id, error_code, status, **kwargs):
+        normalized = self._normalize_status(status)
+        prev = self._connector1_status
+        log.info("StatusNotification", id=self.id, connector=connector_id, status=normalized)
+        if connector_id == 1:
+            self._connector1_status = normalized
+            self._status_received.set()
+        async with AsyncSessionLocal() as db:
+            r = await db.execute(select(Connector).where(Connector.charger_id==self.id, Connector.connector_id==connector_id))
+            conn = r.scalar_one_or_none()
+            if conn is None:
+                conn = Connector(charger_id=self.id, connector_id=connector_id); db.add(conn)
+            try: conn.status = ConnectorStatus(normalized)
+            except: conn.status = ConnectorStatus.UNAVAILABLE
+            conn.error_code = error_code if error_code != "NoError" else None
+            if connector_id == 0:
+                try: await db.execute(update(Charger).where(Charger.id==self.id).values(status=ChargerStatus(normalized)))
+                except: pass
+            await db.commit()
+        await self.server.broadcast_status(self.id, connector_id, normalized)
+        if connector_id == 1: await self._handle_status_transition(prev, normalized)
+        return call_result.StatusNotification()
+
+    async def _handle_status_transition(self, prev, new):
+        if new in VEHICLE_PRESENT_STATUSES and prev not in VEHICLE_PRESENT_STATUSES:
+            self._start_meter_polling()
+            # BUG-4 FIX : re-appliquer le profil quand un véhicule se branche APRÈS le boot.
+            # Au boot, _post_boot_sequence applique le profil si la borne était Available.
+            # Si le véhicule se branche ensuite (Available → Preparing), rien ne ré-envoie
+            # le profil → la borne charge à sa limite hardware (ex: 48A pour TechnoVE).
+            if self._default_max_amps is not None and not self._boot_lock:
+                self._add_task(self._apply_profile_on_connect())
+
+        if new in {"Available","Unavailable","Faulted"} and prev in VEHICLE_PRESENT_STATUSES:
+            self._stop_meter_polling()
+            if self._synthetic_session_id is not None:
+                await self._close_synthetic_session()
+
+    async def _apply_profile_on_connect(self):
+        """
+        Ré-applique le profil de charge dès qu'un véhicule se branche (Available→Preparing).
+
+        Différences avec _post_boot_sequence :
+        - On est APRÈS le boot : defer_profile_if_occupied n'est plus pertinent.
+        - Pour TechnoVE (use_tx_default_profile=True) en Preparing : envoyer TxDefaultProfile
+          SANS le cycle Inop/Op (qui provoque un reboot en état Preparing).
+        - Si boot_lock est actif : ne pas démarrer automatiquement.
+        - Lancer _auto_remote_start si profile.send_remote_start_after_boot et pas de verrou.
+        """
+        p = self.profile
+        # Laisser le temps au StatusNotification d'être traité
+        await asyncio.sleep(2)
+
+        # Ne rien faire si le connecteur n'est plus en état véhicule-présent
+        if self._connector1_status not in VEHICLE_PRESENT_STATUSES:
+            return
+
+        # Appliquer le profil de courant
+        try:
+            status = await self.set_current_limit(self._default_max_amps)
+            log.info("Profil appliqué — vehicle connect",
+                     id=self.id, amps=self._default_max_amps,
+                     profile=p.name, status=status)
+        except Exception as e:
+            log.warning("_apply_profile_on_connect échoué", id=self.id, error=str(e))
+
+        # Lancer RemoteStart auto si configuré et pas de verrou serveur
+        if (p.send_remote_start_after_boot
+                and not self._boot_lock
+                and not self._server_lock_active
+                and not self._active_transactions):
+            await asyncio.sleep(p.remote_start_delay)
+            if self._connector1_status in VEHICLE_PRESENT_STATUSES and not self._active_transactions:
+                log.info("Auto-RemoteStart post-connect", id=self.id, profile=p.name)
+                self._add_task(self._do_remote_start(1, self._default_max_amps, self._local_id_tag))
+
+    @on(Action.Authorize)
+    async def on_authorize(self, id_tag, **kwargs):
+        return call_result.Authorize(id_tag_info={"status":AuthorizationStatus.accepted})
+
+    @on(Action.StartTransaction)
+    async def on_start_transaction(self, connector_id, id_tag, meter_start, timestamp, **kwargs):
+        tx_id = self._next_transaction_id; self._next_transaction_id += 1
+        log.info("StartTransaction", id=self.id, tx_id=tx_id)
+        if self._synthetic_session_id: await self._close_synthetic_session()
+        async with AsyncSessionLocal() as db:
+            ex = await db.execute(select(Session).where(Session.charger_id==self.id, Session.transaction_id==tx_id))
+            session = ex.scalar_one_or_none()
+            if session:
+                self._active_transactions[tx_id] = session.id
+            else:
+                r = await db.execute(select(Connector).where(Connector.charger_id==self.id, Connector.connector_id==connector_id))
+                conn = r.scalar_one_or_none()
+                try: st = datetime.fromisoformat(timestamp.replace("Z","+00:00"))
+                except: st = datetime.now(timezone.utc)
+                session = Session(transaction_id=tx_id, charger_id=self.id,
+                                  connector_id=conn.id if conn else connector_id,
+                                  id_tag=id_tag, meter_start=meter_start/1000.0,
+                                  start_time=st, status=SessionStatus.ACTIVE)
+                db.add(session)
+                try:
+                    await db.commit(); await db.refresh(session)
+                    self._active_transactions[tx_id] = session.id
+                except Exception as e:
+                    await db.rollback()
+                    log.error("StartTransaction insert failed", id=self.id, error=str(e))
+        await self.server.broadcast_transaction(self.id,"start",{"transaction_id":tx_id,"connector_id":connector_id,"id_tag":id_tag,"meter_start":meter_start})
+        return call_result.StartTransaction(transaction_id=tx_id, id_tag_info={"status":AuthorizationStatus.accepted})
+
+    @on(Action.StopTransaction)
+    async def on_stop_transaction(self, meter_stop, timestamp, transaction_id, reason="Local", **kwargs):
+        log.info("StopTransaction", id=self.id, tx_id=transaction_id, reason=reason)
+        async with AsyncSessionLocal() as db:
+            r = await db.execute(select(Session).where(Session.transaction_id==transaction_id, Session.charger_id==self.id))
+            session = r.scalar_one_or_none()
+            if session:
+                kwh = meter_stop/1000.0
+                session.meter_stop=kwh; session.energy_wh=(kwh-(session.meter_start or 0))*1000
+                try: session.stop_time=datetime.fromisoformat(timestamp.replace("Z","+00:00"))
+                except: session.stop_time=datetime.now(timezone.utc)
+                session.stop_reason=reason; session.status=SessionStatus.COMPLETED
+                await db.commit()
+            self._active_transactions.pop(transaction_id,None)
+        await self.server.broadcast_transaction(self.id,"stop",{"transaction_id":transaction_id,"meter_stop":meter_stop,"reason":reason})
+        return call_result.StopTransaction(id_tag_info={"status":AuthorizationStatus.accepted})
+
+    @on(Action.MeterValues)
+    async def on_meter_values(self, connector_id, meter_value, **kwargs):
+        tx_id = kwargs.get("transaction_id")
+        async with AsyncSessionLocal() as db:
+            session_db = None
+            if tx_id:
+                r = await db.execute(select(Session).where(Session.transaction_id==tx_id, Session.charger_id==self.id))
+                session_db = r.scalar_one_or_none()
+            if session_db is None and self._synthetic_session_id:
+                r = await db.execute(select(Session).where(Session.id==self._synthetic_session_id))
+                session_db = r.scalar_one_or_none()
+            for mv in meter_value:
+                parsed = self._parse_meter_value(mv)
+                if parsed.get("power_w") is None and parsed.get("energy_wh") is not None:
+                    now=datetime.now(timezone.utc); last=self._last_energy.get(connector_id)
+                    if last:
+                        dh=(now-last["time"]).total_seconds()/3600; dwh=parsed["energy_wh"]-last["energy_wh"]
+                        if dh>0 and dwh>=0: parsed["power_w"]=round(dwh/dh,1)
+                    self._last_energy[connector_id]={"energy_wh":parsed["energy_wh"],"time":now}
+                raw_ts=mv.get("timestamp")
+                try: ts=datetime.fromisoformat(raw_ts.replace("Z","+00:00")) if raw_ts else datetime.now(timezone.utc)
+                except: ts=datetime.now(timezone.utc)
+                db.add(MeterValue(session_id=session_db.id if session_db else None, timestamp=ts,
+                                  energy_wh=parsed.get("energy_wh"), power_w=parsed.get("power_w"),
+                                  current_a=parsed.get("current_a"), voltage_v=parsed.get("voltage_v"),
+                                  soc_percent=parsed.get("soc_percent"), raw=mv))
+                await self.server.broadcast_meter_value(self.id, connector_id, parsed)
+            await db.commit()
+        return call_result.MeterValues()
+
+    @on(Action.DataTransfer)
+    async def on_data_transfer(self, vendor_id, message_id="", data="", **kwargs):
+        return call_result.DataTransfer(status=DataTransferStatus.accepted)
+
+    # ── Cleanup orphan sessions (BUG-9) ──────────────────────────────────────
+    async def _cleanup_orphan_sessions_at_boot(self):
+        now = datetime.now(timezone.utc)
+        vehicle_present = self._connector1_status in VEHICLE_PRESENT_STATUSES
+        try:
+            async with AsyncSessionLocal() as db:
+                r = await db.execute(select(Session).where(Session.charger_id==self.id, Session.status==SessionStatus.ACTIVE))
+                sessions = r.scalars().all()
+                if not sessions: return
+                closed=[]; restored=[]
+                for s in sessions:
+                    if not vehicle_present or (s.transaction_id and s.transaction_id<0):
+                        s.stop_time=now; s.stop_reason="ServerRestart"; s.status=SessionStatus.COMPLETED
+                        closed.append(s.transaction_id)
+                    elif s.transaction_id and s.transaction_id not in self._active_transactions:
+                        self._active_transactions[s.transaction_id]=s.id; restored.append(s.transaction_id)
+                await db.commit()
+                if closed: log.info("Sessions orphelines fermées",id=self.id,closed=closed)
+                if restored: log.info("Sessions OCPP restaurées",id=self.id,restored=restored)
+        except Exception as e:
+            log.warning("_cleanup_orphan_sessions_at_boot failed", id=self.id, error=str(e))
+
+    # ── Session synthétique ───────────────────────────────────────────────────
+    async def _open_synthetic_session(self):
+        if self._synthetic_session_id: return
+        if self._connector1_status not in VEHICLE_PRESENT_STATUSES:
+            log.warning("_open_synthetic_session ignorée",id=self.id,status=self._connector1_status); return
+        async with AsyncSessionLocal() as db:
+            r = await db.execute(select(Connector).where(Connector.charger_id==self.id,Connector.connector_id==1))
+            conn=r.scalar_one_or_none()
+            mr = await db.execute(select(sa_func.min(Session.transaction_id)).where(Session.charger_id==self.id))
+            min_tx=mr.scalar_one_or_none()
+            stx_id=(min_tx-1) if (min_tx is not None and min_tx<0) else -1
+            s=Session(transaction_id=stx_id,charger_id=self.id,connector_id=conn.id if conn else 1,
+                      id_tag="LOCAL",meter_start=0.0,start_time=datetime.now(timezone.utc),status=SessionStatus.ACTIVE)
+            db.add(s); await db.commit(); await db.refresh(s)
+            self._synthetic_session_id=s.id
+        await self.server.broadcast_transaction(self.id,"start",{"transaction_id":stx_id,"connector_id":1,"id_tag":"LOCAL","meter_start":0,"synthetic":True})
+
+    async def _close_synthetic_session(self):
+        if not self._synthetic_session_id: return
+        async with AsyncSessionLocal() as db:
+            r = await db.execute(select(Session).where(Session.id==self._synthetic_session_id))
+            s=r.scalar_one_or_none()
+            if s: s.stop_time=datetime.now(timezone.utc); s.stop_reason="Local"; s.status=SessionStatus.COMPLETED; await db.commit()
+        self._synthetic_session_id=None
+        await self.server.broadcast_transaction(self.id,"stop",{"transaction_id":None,"meter_stop":0,"reason":"Local"})
+
+    # ── Polling MeterValues ───────────────────────────────────────────────────
+    def _start_meter_polling(self):
+        if self._meter_poll_task and not self._meter_poll_task.done(): return
+        self._meter_poll_task=asyncio.create_task(self._meter_poll_loop())
+
+    def _stop_meter_polling(self):
+        if self._meter_poll_task and not self._meter_poll_task.done():
+            self._meter_poll_task.cancel(); self._meter_poll_task=None
+
+    async def _meter_poll_loop(self):
+        log.info("Démarrage polling MeterValues",id=self.id,profile=self.profile.name)
+        await asyncio.sleep(5)
+        if self.profile.meter_values_require_transaction:
+            if not self._active_transactions and not self._synthetic_session_id:
+                await self._open_synthetic_session()
+        while True:
+            try:
+                await self._safe_call(call.TriggerMessage(requested_message=MessageTrigger.meter_values,connector_id=1),context="TriggerMessage MeterValues")
+            except Exception as e:
+                log.warning("Polling MeterValues failed",id=self.id,error=str(e))
+            await asyncio.sleep(60)
+
+    # ── Post-boot sequence (profile-driven) ───────────────────────────────────
+    async def _post_boot_sequence(self):
+        try: await asyncio.wait_for(self._status_received.wait(),timeout=STATUS_WAIT_TIMEOUT)
+        except asyncio.TimeoutError: log.warning("Timeout StatusNotification",id=self.id)
+        await self._cleanup_orphan_sessions_at_boot()
+        p=self.profile; occupied=self._connector1_status in VEHICLE_PRESENT_STATUSES
+        # A9 : replay du dernier profil connu (si la dernière valeur appliquée
+        # par le scheduler diffère du default_max_amps, on la remet au reconnect).
+        boot_amps = self._default_max_amps
+        if boot_amps is not None:
+            last = await self._load_last_profile_snapshot()
+            last_amps = self._extract_limit_amps(last) if last else None
+            if last_amps is not None and last_amps != boot_amps:
+                log.info("A9 replay profil persisté",id=self.id,
+                         snapshot_amps=last_amps,default_amps=boot_amps,profile=p.name)
+                boot_amps = last_amps
+        # Step 1: charging profile
+        if boot_amps is not None:
+            can_send = not (p.defer_profile_if_occupied and occupied)
+            if can_send:
+                prof={"charging_profile_id":99,"stack_level":p.profile_stack_level,
+                      "charging_profile_purpose":"TxDefaultProfile" if p.use_tx_default_profile else "ChargePointMaxProfile",
+                      "charging_profile_kind":"Absolute",
+                      "charging_schedule":{"charging_rate_unit":"A","charging_schedule_period":[{"start_period":0,"limit":boot_amps}]}}
+                try:
+                    resp=await self._safe_call(call.SetChargingProfile(connector_id=p.profile_connector_id,cs_charging_profiles=prof),context="SetChargingProfile boot")
+                    log.info("Profil appliqué au boot",id=self.id,amps=boot_amps,profile=p.name,status=resp.status if resp else "none")
+                    if resp and getattr(resp, "status", None) == "Accepted":
+                        await self._persist_profile_snapshot(p.profile_connector_id, prof)
+                        self._scheduler_applied_amps = boot_amps
+                except Exception as e: log.warning("SetChargingProfile boot failed",id=self.id,error=str(e))
+            else: log.info("SetChargingProfile différé — connecteur occupé",id=self.id,profile=p.name)
+        # Step 2: ChangeAvailability
+        skip_av = p.skip_availability_when_occupied and occupied
+        if not skip_av:
+            try: await self._safe_call(call.ChangeAvailability(connector_id=1,type=AvailabilityType.operative),context="ChangeAvailability boot")
+            except Exception as e: log.warning("ChangeAvailability failed",id=self.id,error=str(e))
+        else: log.info("ChangeAvailability skippé — connecteur occupé",id=self.id,profile=p.name)
+        # Step 3: trigger status
+        await asyncio.sleep(1)
+        try: await self._safe_call(call.TriggerMessage(requested_message=MessageTrigger.status_notification,connector_id=1),context="TriggerMessage Status")
+        except: pass
+        await asyncio.sleep(2)
+        real=self._connector1_status; vp=real in VEHICLE_PRESENT_STATUSES
+        log.info("Statut final post-boot",id=self.id,status=real,vehicle_present=vp,profile=p.name)
+        # Step 4: configure meter values
+        await self._configure_meter_values()
+        # Step 5: local list
+        if p.requires_local_list: self._add_task(self._populate_local_list())
+        # Step 6: lock or poll
+         # Step 6: lock or poll
+        if vp:
+            self._start_meter_polling()
+            if p.send_remote_start_after_boot and not self._boot_lock:
+                self._add_task(self._auto_remote_start_after_boot())
+        elif self._boot_lock:
+            try: await self._safe_call(call.ChangeAvailability(connector_id=1,type=AvailabilityType.inoperative),context="boot lock")
+            except Exception as e: log.warning("Boot lock failed",id=self.id,error=str(e))
+
+        # Step 7: appliquer le profil si il a été différé au boot (borne déjà en Preparing)
+        # set_current_limit() envoie TxDefaultProfile sans cycle Inop/Op → safe en Preparing
+        if p.defer_profile_if_occupied and occupied and self._default_max_amps is not None and not self._boot_lock:
+            await asyncio.sleep(3)
+            if self._connector1_status in VEHICLE_PRESENT_STATUSES:
+                try:
+                    status = await self.set_current_limit(self._default_max_amps)
+                    log.info("Profil différé appliqué post-boot", id=self.id,
+                             amps=self._default_max_amps, profile=p.name, status=status)
+                except Exception as e:
+                    log.warning("Profil différé post-boot échoué", id=self.id, error=str(e))
+
+    async def _configure_meter_values(self):
+        p=self.profile
+        if p.skip_measurand_detection:
+            final=p.fixed_measurands
+            log.info("Measurands fixes (skip detection)",id=self.id,profile=p.name,measurands=final)
+        else:
+            DESIRED=["Energy.Active.Import.Register","Power.Active.Import","Current.Import","Voltage","SoC","Temperature"]
+            final=DESIRED
+            try:
+                r=await self._safe_call(call.GetConfiguration(key=["MeterValuesSampledData","MeterValuesSampledDataMaxLength"]),context="GetConfiguration MeterValues")
+                if r:
+                    ml=len(DESIRED); supp=DESIRED
+                    for item in r.configuration_key or []:
+                        if item["key"]=="MeterValuesSampledDataMaxLength":
+                            try: ml=int(item.get("value",str(len(DESIRED))))
+                            except: pass
+                        if item["key"]=="MeterValuesSampledData":
+                            c=[m.strip() for m in item.get("value","").split(",") if m.strip()]
+                            if c: supp=c
+                    final=[m for m in DESIRED if m in supp][:ml] or ["Energy.Active.Import.Register","Power.Active.Import"]
+            except: final=["Energy.Active.Import.Register","Power.Active.Import"]
+        self._active_measurands=final
+        # A2 : HeartbeatInterval propagé depuis DB (override par borne) ou profile par défaut
+        hb = getattr(self, "_heartbeat_interval", None) or p.heartbeat_interval
+        configs=[("MeterValueSampleInterval","60"),("MeterValuesSampledData",",".join(final)),
+                 ("HeartbeatInterval",str(hb)),("StopTransactionOnEVSideDisconnect","true"),
+                 ("ConnectionTimeOut","60"),("Cst_MeterValuesInTxOnly","false")]
+        for key,val in configs:
+            if p.skip_meter_config and "Meter" in key: continue
+            try:
+                resp=await self._safe_call(call.ChangeConfiguration(key=key,value=val),context=f"ChangeConfiguration {key}")
+                if resp and resp.status=="Accepted": self._config_cache[key]=val
+            except: pass
+
+    async def _fetch_configuration(self):
+        await asyncio.sleep(10)
+        try:
+            r=await self._safe_call(call.GetConfiguration(key=[]),context="GetConfiguration full")
+            if r:
+                for item in r.configuration_key or []: self._config_cache[item["key"]]=item.get("value","")
+                await self.server.broadcast_config(self.id,self._config_cache)
+        except: pass
+
+    async def _populate_local_list(self):
+        await asyncio.sleep(15)
+        try:
+            await self._safe_call(call.SendLocalList(list_version=1,update_type="Full",
+                local_authorization_list=[{"id_tag":self._local_id_tag,"id_tag_info":{"status":AuthorizationStatus.accepted}}]),
+                context="SendLocalList")
+        except Exception as e: log.warning("SendLocalList failed",id=self.id,error=str(e))
+
+    async def _auto_remote_start_after_boot(self):
+        if self._auto_start_pending: return
+        self._auto_start_pending=True
+        try:
+            await asyncio.sleep(20)
+            # Ne pas relancer si l'opérateur a manuellement arrêté la charge
+            if self._server_lock_active:
+                log.info("Auto-RemoteStart annulé — verrou serveur actif", id=self.id); return
+            if self._connector1_status not in VEHICLE_PRESENT_STATUSES or self._active_transactions: return
+            log.info("Auto-RemoteStart",id=self.id,profile=self.profile.name)
+            await self._do_remote_start(1,self._default_max_amps,self._local_id_tag)
+        finally: self._auto_start_pending=False
+
+    # ── RemoteStart (profile-driven, séquence unifiée) ────────────────────────
+    async def remote_start_transaction(self, connector_id, id_tag, charging_profile=None, max_amps=None):
+        # Lever le verrou serveur — l'opérateur démarre manuellement
+        self._server_lock_active = False
+        if self._remote_start_lock.locked():
+            log.warning("RemoteStart ignoré — lock",id=self.id); return False
+        async with self._remote_start_lock:
+            try:
+                amps=max_amps if max_amps is not None else self._default_max_amps
+                return await self._do_remote_start(connector_id,amps,id_tag,charging_profile)
+            except Exception as e:
+                log.error("RemoteStart failed",id=self.id,error=str(e)); return False
+
+    async def _do_remote_start(self, connector_id, amps, id_tag, charging_profile=None):
+        """Séquence RemoteStart unifiée — pilotée par self.profile."""
+        p=self.profile
+        # 1. Appliquer le profil AVANT RemoteStart
+        if amps is not None:
+            # BUG-3 FIX : TxProfile SANS transaction_id est invalide (OCPP spec §7.3).
+            # SetChargingProfile avant RemoteStart doit être TxDefaultProfile ou ChargePointMaxProfile.
+            pre_purpose = "TxDefaultProfile" if p.use_tx_default_profile else "ChargePointMaxProfile"
+            pre_connector = p.profile_connector_id  # 1 pour TxDefault, 0 pour MaxProfile
+            prof = {
+                "charging_profile_id":      99,
+                "stack_level":              p.profile_stack_level,
+                "charging_profile_purpose": pre_purpose,
+                "charging_profile_kind":    "Absolute",
+                "charging_schedule": {
+                    "charging_rate_unit":       "A",
+                    "charging_schedule_period": [{"start_period": 0, "limit": amps}],
+                },
+            }
+            try:
+                resp = await self._safe_call(
+                    call.SetChargingProfile(connector_id=pre_connector, cs_charging_profiles=prof),
+                    context="SetChargingProfile pre-RemoteStart",
+                )
+                log.info("Profil pré-RemoteStart", id=self.id, amps=amps,
+                         purpose=pre_purpose, status=resp.status if resp else "none")
+                if resp and getattr(resp, "status", None) == "Accepted":
+                    await self._persist_profile_snapshot(pre_connector, prof)
+                    self._scheduler_applied_amps = amps
+            except Exception as e:
+                log.warning("SetChargingProfile pre-RemoteStart failed", id=self.id, error=str(e))
+            await asyncio.sleep(1)
+        # 2. ChangeAvailability si nécessaire
+        st=self._connector1_status
+        needs_av = not(p.skip_availability_when_occupied and st in VEHICLE_PRESENT_STATUSES) and st not in {"Available",*VEHICLE_PRESENT_STATUSES}
+        if needs_av:
+            try: await self._safe_call(call.ChangeAvailability(connector_id=connector_id,type=AvailabilityType.operative),context="ChangeAvailability RemoteStart")
+            except Exception as e: log.warning("ChangeAvailability RemoteStart failed",id=self.id,error=str(e))
+            await asyncio.sleep(self._remote_start_delay)
+        else: await asyncio.sleep(0.5)
+        # 3. RemoteStartTransaction
+        kwargs={"connector_id":connector_id,"id_tag":id_tag}
+        if not p.no_profile_in_remote_start and charging_profile and amps is None:
+            kwargs["charging_profile"]=charging_profile
+        resp=await self._safe_call(call.RemoteStartTransaction(**kwargs),context="RemoteStartTransaction")
+        if resp is None: log.error("RemoteStart réponse None",id=self.id,profile=p.name); return False
+        success=resp.status==RemoteStartStopStatus.accepted
+        log.info("RemoteStart",id=self.id,profile=p.name,connector=connector_id,amps=amps,success=success)
+        return success
+
+    # ── Commandes publiques ────────────────────────────────────────────────────
+    async def remote_stop_transaction(self, transaction_id, lock=True):
+        try:
+            r=await self.call(call.RemoteStopTransaction(transaction_id=transaction_id))
+            success=r.status==RemoteStartStopStatus.accepted
+            if success and lock: asyncio.create_task(self._lock_after_stop())
+            return success
+        except Exception as e: log.error("RemoteStop failed",id=self.id,error=str(e)); return False
+
+    async def _lock_after_stop(self):
+        self._stop_meter_polling(); await asyncio.sleep(5)
+        try: await self._safe_call(call.ChangeAvailability(connector_id=1,type=AvailabilityType.inoperative),context="lock after stop")
+        except: pass
+
+    async def reset(self, reset_type="Soft"):
+        try: r=await self.call(call.Reset(type=ResetType(reset_type))); return r.status==ResetStatus.accepted
+        except: return False
+
+    async def clear_cache(self):
+        try:
+            from ocpp.v16.enums import ClearCacheStatus
+            r=await self.call(call.ClearCache()); return r.status==ClearCacheStatus.accepted
+        except: return False
+
+    async def get_configuration(self, keys=None):
+        try:
+            r=await self._safe_call(call.GetConfiguration(key=keys or []),context="GetConfiguration")
+            if r:
+                for item in r.configuration_key or []: self._config_cache[item["key"]]=item.get("value","")
+                return r.configuration_key or []
+            return []
+        except: return []
+
+    async def change_configuration(self, key, value):
+        try:
+            r=await self._safe_call(call.ChangeConfiguration(key=key,value=value),context=f"ChangeConfiguration {key}")
+            if r and r.status=="Accepted": self._config_cache[key]=value
+            return r.status if r else "Failed"
+        except: return "Failed"
+
+    async def set_charging_profile(self, connector_id, profile):
+        try:
+            r=await self._safe_call(call.SetChargingProfile(connector_id=connector_id,cs_charging_profiles=profile),context="SetChargingProfile")
+            status = r.status if r else "Failed"
+            if status == "Accepted":
+                await self._persist_profile_snapshot(connector_id, profile)
+                amps = self._extract_limit_amps(profile)
+                if amps is not None:
+                    self._scheduler_applied_amps = amps
+            return status
+        except: return "Failed"
+
+    async def clear_charging_profile(
+        self,
+        connector_id: int | None = 0,
+        profile_id: int | None = None,
+    ) -> str:
+        """A8 — ClearChargingProfile + invalidation du snapshot persisté.
+
+        Sans cette invalidation, A9 ré-appliquerait au boot un profil que
+        l'opérateur vient d'effacer côté borne → incohérence silencieuse.
+        """
+        try:
+            kwargs: dict = {}
+            if connector_id is not None:
+                kwargs["connector_id"] = connector_id
+            if profile_id is not None:
+                kwargs["id"] = profile_id
+            r = await self._safe_call(
+                call.ClearChargingProfile(**kwargs),
+                context="ClearChargingProfile",
+            )
+            status = r.status if r else "Failed"
+            if status == "Accepted":
+                # connector_id=0 dans OCPP signifie "toute la borne" → passer None au helper
+                # pour matcher tous les connecteurs, sinon on ne matche que connector_id==0
+                # (qui ne correspond à aucun snapshot réel : on persiste sur conn 0 ou 1).
+                target_conn = None if (connector_id == 0 or connector_id is None) else connector_id
+                await self._expire_profile_snapshots(
+                    connector_id=target_conn,
+                    profile_id=profile_id,
+                )
+            log.info("ClearChargingProfile",
+                     id=self.id, connector_id=connector_id,
+                     profile_id=profile_id, status=status)
+            return status
+        except Exception as e:
+            log.warning("clear_charging_profile failed", id=self.id, error=str(e))
+            return "Failed"
+
+    async def set_available(self, connector_id):
+        try:
+            r=await self._safe_call(call.ChangeAvailability(connector_id=connector_id,type=AvailabilityType.operative),context="set_available")
+            return r is not None and r.status in ("Accepted","Scheduled")
+        except: return False
+
+    async def set_unavailable(self, connector_id):
+        try:
+            r=await self._safe_call(call.ChangeAvailability(connector_id=connector_id,type=AvailabilityType.inoperative),context="set_unavailable")
+            return r is not None and r.status in ("Accepted","Scheduled")
+        except: return False
+
+    async def unlock_connector(self, connector_id):
+        try: r=await self.call(call.UnlockConnector(connector_id=connector_id)); return r.status
+        except: return "Failed"
+
+    async def trigger_message(self, message, connector_id=None):
+        try:
+            kw={"requested_message":MessageTrigger(message)}
+            if connector_id is not None: kw["connector_id"]=connector_id
+            r=await self._safe_call(call.TriggerMessage(**kw),context=f"TriggerMessage {message}")
+            return r.status if r else "Failed"
+        except: return "Failed"
+
+    async def send_local_list(self, list_version, update_type, local_auth_list):
+        try:
+            r=await self._safe_call(call.SendLocalList(list_version=list_version,update_type=update_type,local_authorization_list=local_auth_list),context="SendLocalList")
+            return r.status if r else "Failed"
+        except: return "Failed"
+
+    async def data_transfer(self, vendor_id, message_id="", data=""):
+        try:
+            r=await self._safe_call(call.DataTransfer(vendor_id=vendor_id,message_id=message_id,data=data),context="DataTransfer")
+            return r.data if r else None
+        except: return None
+
+    # ── Déconnexion ────────────────────────────────────────────────────────────
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Contrôle du courant — méthodes principales (profile-aware)
+    # ──────────────────────────────────────────────────────────────────────────
+
+    @property
+    def _is_technove(self) -> bool:
+        """Compatibilité ascendante — chargers.py/scheduler.py."""
+        if hasattr(self, 'profile') and self.profile.name != "Generic":
+            return "TECHNOVE" in self.profile.name.upper()
+        return "TECHNOVE" in (getattr(self, '_manufacturer', '') or "").upper()
+
+    async def set_current_limit(self, amps: float) -> str:
+        """
+        Change le courant de charge immédiatement selon le profil fabricant.
+
+        TechnoVE / bornes avec use_tx_default_profile=True :
+          - Session OCPP active → TxProfile avec transaction_id (effet immédiat)
+          - Session locale (synthétique, pas de TX OCPP) → TxDefaultProfile +
+            cycle Inoperative/Operative pour forcer l'application
+        Générique :
+          - ChargePointMaxProfile sur connector 0
+        """
+        p = self.profile
+        use_tx = p.use_tx_default_profile or self._is_technove
+
+        if use_tx:
+            active_tx_ids = [tid for tid in self._active_transactions if tid > 0]
+
+            if active_tx_ids:
+                # Session OCPP active → TxProfile + transaction_id (effet immédiat)
+                tx_id = active_tx_ids[0]
+                profile = {
+                    "charging_profile_id":      98,
+                    "stack_level":              1,
+                    "charging_profile_purpose": "TxProfile",
+                    "charging_profile_kind":    "Absolute",
+                    "transaction_id":           tx_id,
+                    "charging_schedule": {
+                        "charging_rate_unit":       "A",
+                        "charging_schedule_period": [{"start_period": 0, "limit": amps}],
+                    },
+                }
+                status = await self.set_charging_profile(1, profile)
+                log.info("set_current_limit — TxProfile (session OCPP active)",
+                         id=self.id, amps=amps, tx_id=tx_id, status=status)
+                return status
+
+            else:
+                # Pas de session OCPP → TxDefaultProfile
+                profile = {
+                    "charging_profile_id":      99,
+                    "stack_level":              0,
+                    "charging_profile_purpose": "TxDefaultProfile",
+                    "charging_profile_kind":    "Absolute",
+                    "charging_schedule": {
+                        "charging_rate_unit":       "A",
+                        "charging_schedule_period": [{"start_period": 0, "limit": amps}],
+                    },
+                }
+                status = await self.set_charging_profile(1, profile)
+                log.info("set_current_limit — TxDefaultProfile (pas de session OCPP)",
+                         id=self.id, amps=amps, status=status)
+
+                # Cycle Inop/Op pour forcer l'application immédiate du nouveau profil.
+                # Skip si connecteur en Preparing/Charging (TechnoVE reboot sinon).
+                if status == "Accepted" and amps > 0:
+                    if self._connector1_status not in {"Preparing", "Charging", "SuspendedEV"}:
+                        await asyncio.sleep(0.5)
+                        try:
+                            await self.call(call.ChangeAvailability(
+                                connector_id=1, type=AvailabilityType.inoperative,
+                            ))
+                            await asyncio.sleep(1.0)
+                            await self.call(call.ChangeAvailability(
+                                connector_id=1, type=AvailabilityType.operative,
+                            ))
+                            log.info("set_current_limit — cycle Inop/Op appliqué",
+                                     id=self.id, amps=amps)
+                        except Exception as e:
+                            log.warning("set_current_limit — cycle Inop/Op échoué",
+                                        id=self.id, error=str(e))
+                return status
+        else:
+            # Générique : ChargePointMaxProfile sur connector 0
+            profile = {
+                "charging_profile_id":      99,
+                "stack_level":              9,
+                "charging_profile_purpose": "ChargePointMaxProfile",
+                "charging_profile_kind":    "Absolute",
+                "charging_schedule": {
+                    "charging_rate_unit":       "A",
+                    "charging_schedule_period": [{"start_period": 0, "limit": amps}],
+                },
+            }
+            status = await self.set_charging_profile(0, profile)
+            log.info("set_current_limit — ChargePointMaxProfile",
+                     id=self.id, amps=amps, status=status)
+            return status
+
+    async def stop_charging(self, lock: bool = True) -> dict:
+        """
+        Arrête la charge de façon fiable pour TechnoVE et bornes génériques.
+
+        Séquence multi-étapes :
+          1. set_current_limit(0) — coupe le courant physiquement (immédiat)
+          2. RemoteStopTransaction si session OCPP active
+          3. ChangeAvailability(Inoperative) si lock=True
+          4. _server_lock_active=True + boot_lock=True en DB si lock=True
+             → survit aux reboots TechnoVE (elle ne redémarre pas la charge)
+        """
+        results = []
+
+        # Étape 1 : couper le courant via profil
+        try:
+            cut_status = await self.set_current_limit(0)
+            results.append(f"set_limit(0)={cut_status}")
+        except Exception as e:
+            results.append(f"set_limit(0)=err:{str(e)[:30]}")
+            log.warning("stop_charging — couper courant échoué", id=self.id, error=str(e))
+
+        await asyncio.sleep(1)
+
+        # Étape 2 : RemoteStopTransaction si session OCPP active
+        active_tx_ids = [tid for tid in self._active_transactions if tid > 0]
+        if active_tx_ids:
+            tx_id = active_tx_ids[0]
+            try:
+                resp = await self.call(call.RemoteStopTransaction(transaction_id=tx_id))
+                results.append(f"RemoteStop(tx={tx_id})={resp.status}")
+                log.info("stop_charging — RemoteStopTransaction",
+                         id=self.id, tx_id=tx_id, status=resp.status)
+            except Exception as e:
+                results.append(f"RemoteStop(tx={tx_id})=err:{str(e)[:30]}")
+                log.warning("stop_charging — RemoteStop échoué", id=self.id, error=str(e))
+            await asyncio.sleep(2)
+
+        # Étape 3 : Inoperative pour bloquer tout redémarrage
+        if lock:
+            try:
+                resp = await self.call(call.ChangeAvailability(
+                    connector_id=1, type=AvailabilityType.inoperative,
+                ))
+                results.append(f"Inop={resp.status}")
+                log.info("stop_charging — ChangeAvailability Inoperative",
+                         id=self.id, status=resp.status)
+            except Exception as e:
+                results.append(f"Inop=err:{str(e)[:30]}")
+                log.warning("stop_charging — ChangeAvail Inop échoué", id=self.id, error=str(e))
+
+        # Étape 4 : verrou serveur + persistance DB
+        if lock:
+            self._server_lock_active = True
+            self._boot_lock = True
+            try:
+                async with AsyncSessionLocal() as db:
+                    await db.execute(
+                        update(Charger).where(Charger.id == self.id)
+                        .values(boot_lock=True)
+                    )
+                    await db.commit()
+                results.append("boot_lock=True(DB)")
+                log.info("stop_charging — verrou persisté en DB", id=self.id)
+            except Exception as e:
+                results.append(f"boot_lock_db=err:{str(e)[:30]}")
+                log.warning("stop_charging — persistance verrou échouée",
+                            id=self.id, error=str(e))
+
+        self._stop_meter_polling()
+
+        return {"stopped": True, "locked": lock, "method": " | ".join(results)}
+
+    async def on_disconnect(self):
+        log.info("Borne déconnectée",id=self.id)
+        self._cancel_boot_tasks(); self._stop_meter_polling()
+        orphans=list(self._active_transactions.keys())
+        if orphans or self._synthetic_session_id:
+            try:
+                async with AsyncSessionLocal() as db:
+                    now=datetime.now(timezone.utc)
+                    for txid in orphans:
+                        r=await db.execute(select(Session).where(Session.charger_id==self.id,Session.transaction_id==txid,Session.status==SessionStatus.ACTIVE))
+                        s=r.scalar_one_or_none()
+                        if s: s.stop_time=now; s.stop_reason="EVDisconnected"; s.status=SessionStatus.COMPLETED
+                    if self._synthetic_session_id:
+                        r=await db.execute(select(Session).where(Session.id==self._synthetic_session_id))
+                        s=r.scalar_one_or_none()
+                        if s and s.status==SessionStatus.ACTIVE: s.stop_time=now; s.stop_reason="EVDisconnected"; s.status=SessionStatus.COMPLETED
+                    await db.commit()
+            except Exception as e: log.warning("Disconnect session cleanup failed",id=self.id,error=str(e))
+        self._active_transactions.clear(); self._synthetic_session_id=None
+        try:
+            async with AsyncSessionLocal() as db:
+                await db.execute(update(Charger).where(Charger.id==self.id).values(status=ChargerStatus.OFFLINE)); await db.commit()
+        except: pass
+        await self.server.broadcast_disconnect(self.id)

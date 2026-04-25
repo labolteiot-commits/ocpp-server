@@ -11,6 +11,8 @@ Ouvre http://localhost:8001 dans ton navigateur.
 import argparse
 import asyncio
 import json
+import math
+import os
 import random
 import sys
 from datetime import datetime, timezone
@@ -30,6 +32,16 @@ from ocpp.v16.enums import (
     MessageTrigger, Action,
 )
 from ocpp.routing import on
+
+
+# ═══════════════════════════════════════════════════════
+# Sprint 27 — Réalisme physique + injection de défauts
+# Contexte Québec : L2 240V mono résidentiel (défaut),
+#                   L2 3ph 208V commercial (option).
+# ═══════════════════════════════════════════════════════
+PERSIST_PATH = os.environ.get("VIRTUAL_CHARGER_STATE",
+                              "./virtual_charger_state.json")
+POWER_FACTOR = 0.98
 
 
 # ═══════════════════════════════════════════════════════
@@ -56,14 +68,40 @@ class SimState:
         # Charge
         self.charging        = False
         self.availability    = "Operative"
-        self.max_current_a   = 32.0    # peut être réduit par SetChargingProfile
+        self.max_current_a   = 40.0    # résidentiel L2 QC typique (TechnoVE 48A, Grizzl-E 40A)
         self.current_a       = 0.0
         self.power_w         = 0.0
         self.session_energy_wh = 0.0
-        self.meter_wh        = round(random.uniform(5000, 30000), 1)  # compteur absolu
+        self.meter_wh        = round(random.uniform(5000, 30000), 1)  # écrasé par _load_persistent_state si fichier
         self.meter_start_wh  = 0.0
         self.transaction_id: Optional[int] = None
         self.session_start: Optional[datetime] = None
+
+        # Sprint 27 — Mode phase (Québec)
+        #   residential_l2       : 240V split-phase, 1 channel current — 95% du parc résidentiel QC
+        #   commercial_l2_3ph    : 208V wye L-L, 3 channels L1/L2/L3 — déploiement commercial
+        self.phase_mode           = "residential_l2"
+        self.voltage_nominal_v    = 240.0
+        self.cc_cv_threshold_soc  = 80.0   # début du tapering (fin CC)
+        self.cc_cv_end_soc        = 95.0   # fin du tapering (charge ≈ 8% max ensuite)
+        self.ambient_temp_c       = 22.0
+        self.internal_temp_c      = 22.0
+        self.line_freq_hz         = 60.0   # QC nominal 60 Hz
+        self.noise_enabled        = True
+
+        # Injection de défauts (simuler bugs réels observés TechnoVE/Grizzl-E)
+        self.fault_injection      = None   # None | "faulted" | "meter_rollback" | "comm_slow" | "stuck_charging"
+        self.fault_error_code     = "NoError"
+        self.contactor_welded     = False  # StopTransaction n'arrête pas la charge
+        self.comm_delay_ms        = 0      # latence injectée sur MeterValues
+
+        # Sprint 32 Point 2 — LocalAuthListManagement profile
+        self.local_list_enabled   = True
+        self.local_list_version   = 0
+        self.local_list: Dict[str, dict] = {}   # id_tag → id_tag_info (status, parentIdTag, expiryDate…)
+
+        # Sprint 32 Point 3 — Reservation profile
+        self.active_reservations: Dict[int, dict] = {}   # reservation_id → {connector_id, id_tag, expiry_date, parent_id_tag}
 
         # Simulation
         self.speed           = 60      # 1 seconde réelle = speed secondes simulées
@@ -81,6 +119,37 @@ class SimState:
 
         # Clients WebSocket du navigateur
         self._browser_clients: set = set()
+
+        # Meter persistant (compteur absolu conservé entre redémarrages — comme EEPROM borne réelle)
+        self._load_persistent_state()
+
+    # ── État persistant (meter_wh ne doit pas régresser entre boots) ──
+    def _load_persistent_state(self):
+        if not os.path.exists(PERSIST_PATH):
+            return
+        try:
+            with open(PERSIST_PATH) as f:
+                data = json.load(f)
+            self.meter_wh = float(data.get("meter_wh", self.meter_wh))
+            # Sprint 32 P2 — restaurer la local auth list
+            self.local_list_version = int(data.get("local_list_version", 0))
+            raw_list = data.get("local_list", {})
+            if isinstance(raw_list, dict):
+                self.local_list = {str(k): v for k, v in raw_list.items() if isinstance(v, dict)}
+        except Exception:
+            pass
+
+    def _save_persistent_state(self):
+        try:
+            with open(PERSIST_PATH, "w") as f:
+                json.dump({
+                    "meter_wh":           self.meter_wh,
+                    "saved_at":           datetime.now(timezone.utc).isoformat(),
+                    "local_list_version": self.local_list_version,
+                    "local_list":         self.local_list,
+                }, f)
+        except Exception:
+            pass
 
     # ── Logging ──────────────────────────────────────────
     def log(self, direction: str, action: str, payload: dict = {}):
@@ -125,6 +194,22 @@ class SimState:
             "transaction_id":    self.transaction_id,
             "session_duration":  dur,
             "speed":             self.speed,
+            # Sprint 27 — physique / injection
+            "phase_mode":          self.phase_mode,
+            "voltage_nominal_v":   self.voltage_nominal_v,
+            "cc_cv_threshold_soc": self.cc_cv_threshold_soc,
+            "ambient_temp_c":      self.ambient_temp_c,
+            "internal_temp_c":     round(self.internal_temp_c, 1),
+            "line_freq_hz":        round(self.line_freq_hz, 2),
+            "fault_injection":     self.fault_injection,
+            "fault_error_code":    self.fault_error_code,
+            "contactor_welded":    self.contactor_welded,
+            "noise_enabled":       self.noise_enabled,
+            # Sprint 32 P2+P3
+            "local_list_enabled":  self.local_list_enabled,
+            "local_list_version":  self.local_list_version,
+            "local_list_count":    len(self.local_list),
+            "active_reservations": len(self.active_reservations),
         }
 
     async def broadcast(self):
@@ -245,13 +330,20 @@ class VirtualCP(CP):
             "MeterValueSampleInterval":         "60",
             "HeartbeatInterval":                "30",
             "NumberOfConnectors":               "1",
-            "SupportedFeatureProfiles":         "Core,SmartCharging,RemoteTrigger",
+            # Sprint 32 P2+P3 — annonce LocalAuthListManagement + Reservation
+            "SupportedFeatureProfiles":         "Core,SmartCharging,RemoteTrigger,LocalAuthListManagement,Reservation",
             "MeterValuesSampledData":           "Energy.Active.Import.Register,Power.Active.Import,Current.Import,Voltage,SoC",
             "ChargeProfileMaxStackLevel":       "10",
             "ChargingScheduleMaxPeriods":       "24",
             "MaxChargingProfilesInstalled":     "5",
             "StopTransactionOnEVSideDisconnect":"true",
             "ConnectorSwitch3to1PhaseSupported":"false",
+            # Sprint 32 P2 — clés LocalAuthListManagement (§7.17-7.20 OCPP 1.6J)
+            "LocalAuthListEnabled":             "true" if sim.local_list_enabled else "false",
+            "LocalAuthListMaxLength":           "100",
+            "SendLocalListMaxLength":           "50",
+            "LocalAuthorizeOffline":            "true",
+            "LocalPreAuthorize":                "false",
         }
         keys_to_return = key if key else list(cfg.keys())
         result = [
@@ -265,9 +357,64 @@ class VirtualCP(CP):
     @on(Action.ChangeConfiguration)
     async def on_change_config(self, key: str, value: str, **kwargs):
         sim.log("← recv", "ChangeConfiguration", {"key": key, "value": value})
+        # Sprint 32 P2 — appliquer LocalAuthListEnabled si pushé
+        if key == "LocalAuthListEnabled":
+            sim.local_list_enabled = (str(value).lower() == "true")
         sim.log("→ sent", "ChangeConfiguration.response", {"status": "Accepted"})
         return call_result.ChangeConfiguration(
             status=ConfigurationStatus.accepted)
+
+    # ── Sprint 32 Point 2 — LocalAuthListManagement profile ──────────────
+    @on(Action.SendLocalList)
+    async def on_send_local_list(self, list_version: int, update_type: str,
+                                  local_authorization_list: list = None, **kwargs):
+        local_authorization_list = local_authorization_list or []
+        sim.log("← recv", "SendLocalList", {
+            "list_version": list_version,
+            "update_type":  update_type,
+            "entries":      len(local_authorization_list),
+        })
+        # Version check (OCPP §6.20) — Full ne contrôle pas, Differential doit être > courant
+        # Permissif : on accepte si list_version > courante, sinon VersionMismatch.
+        if list_version <= sim.local_list_version and list_version != 0:
+            sim.log("→ sent", "SendLocalList.response", {"status": "VersionMismatch"})
+            return call_result.SendLocalList(status="VersionMismatch")
+
+        if update_type == "Full":
+            # Remplace tout
+            sim.local_list = {}
+            for entry in local_authorization_list:
+                id_tag = entry.get("id_tag") if isinstance(entry, dict) else getattr(entry, "id_tag", None)
+                info = entry.get("id_tag_info") if isinstance(entry, dict) else getattr(entry, "id_tag_info", None)
+                if id_tag:
+                    sim.local_list[id_tag] = info or {}
+        else:
+            # Differential : merge — présence de id_tag_info = add/update, absence = delete
+            for entry in local_authorization_list:
+                id_tag = entry.get("id_tag") if isinstance(entry, dict) else getattr(entry, "id_tag", None)
+                info = entry.get("id_tag_info") if isinstance(entry, dict) else getattr(entry, "id_tag_info", None)
+                if not id_tag:
+                    continue
+                if info:
+                    sim.local_list[id_tag] = info
+                else:
+                    sim.local_list.pop(id_tag, None)
+
+        sim.local_list_version = list_version
+        sim._save_persistent_state()
+        sim.log("→ sent", "SendLocalList.response", {
+            "status":          "Accepted",
+            "new_version":     sim.local_list_version,
+            "stored_entries":  len(sim.local_list),
+        })
+        return call_result.SendLocalList(status="Accepted")
+
+    @on(Action.GetLocalListVersion)
+    async def on_get_local_list_version(self, **kwargs):
+        version = sim.local_list_version if sim.local_list_enabled else -1
+        sim.log("← recv", "GetLocalListVersion", {})
+        sim.log("→ sent", "GetLocalListVersion.response", {"list_version": version})
+        return call_result.GetLocalListVersion(list_version=version)
 
     @on(Action.TriggerMessage)
     async def on_trigger(self, requested_message: str,
@@ -327,12 +474,63 @@ class VirtualCP(CP):
         sim.log("→ sent", "DataTransfer.response", {"status": "Accepted"})
         return call_result.DataTransfer(status="Accepted")
 
+    @on(Action.ReserveNow)
+    async def on_reserve_now(self, connector_id: int, expiry_date: str,
+                              id_tag: str, reservation_id: int,
+                              parent_id_tag: str = None, **kwargs):
+        sim.log("← recv", "ReserveNow", {
+            "connector_id":   connector_id,
+            "id_tag":         id_tag,
+            "reservation_id": reservation_id,
+            "expiry":         expiry_date,
+        })
+        if sim.vehicle_plugged or sim.charging:
+            sim.log("→ sent", "ReserveNow.response", {"status": "Occupied"})
+            return call_result.ReserveNow(status="Occupied")
+        if sim.conn1_status == "Faulted" or sim.fault_injection == "faulted":
+            sim.log("→ sent", "ReserveNow.response", {"status": "Faulted"})
+            return call_result.ReserveNow(status="Faulted")
+        if sim.availability == "Inoperative":
+            sim.log("→ sent", "ReserveNow.response", {"status": "Unavailable"})
+            return call_result.ReserveNow(status="Unavailable")
+        # Sprint 32 P3 — persistance de la réservation active côté sim
+        sim.active_reservations[int(reservation_id)] = {
+            "connector_id":  int(connector_id) if connector_id else 1,
+            "id_tag":        id_tag,
+            "expiry_date":   expiry_date,
+            "parent_id_tag": parent_id_tag,
+        }
+        await _set_status("Reserved", connector_id or 1)
+        sim.log("→ sent", "ReserveNow.response", {
+            "status": "Accepted",
+            "active_reservations": len(sim.active_reservations),
+        })
+        return call_result.ReserveNow(status="Accepted")
+
+    @on(Action.CancelReservation)
+    async def on_cancel_reservation(self, reservation_id: int, **kwargs):
+        sim.log("← recv", "CancelReservation",
+                {"reservation_id": reservation_id})
+        rid = int(reservation_id)
+        if rid in sim.active_reservations:
+            res = sim.active_reservations.pop(rid)
+            if sim.conn1_status == "Reserved":
+                await _set_status("Available", res.get("connector_id", 1))
+            sim.log("→ sent", "CancelReservation.response", {"status": "Accepted"})
+            return call_result.CancelReservation(status="Accepted")
+        sim.log("→ sent", "CancelReservation.response", {"status": "Rejected"})
+        return call_result.CancelReservation(status="Rejected")
+
 
 # ═══════════════════════════════════════════════════════
 # Helpers de simulation
 # ═══════════════════════════════════════════════════════
-VOLTAGE_V    = 240.0
-POWER_FACTOR = 0.98
+
+def _max_current_for_mode() -> float:
+    """Plafond physique par mode (Québec)."""
+    if sim.phase_mode == "commercial_l2_3ph":
+        return 48.0   # 208V × 48A × 3 = 28.8 kVA (typique commercial AC)
+    return 40.0       # 240V × 40A = 9.6 kW (TechnoVE S40 / Grizzl-E)
 
 
 async def _set_status(status: str, connector_id: int = 1):
@@ -371,32 +569,73 @@ async def _do_remote_start(id_tag: str, connector_id: int = 1):
 
 
 async def _start_transaction(id_tag: str = "LOCAL"):
-    """Envoie StartTransaction et démarre la boucle de charge."""
+    """Séquence : Authorize → StartTransaction → MeterValues Tx.Begin → boucle charge."""
     if not sim._cp:
         return
 
+    # 1. Authorize — Sprint 32 P2 : LocalAuthList offline avant relai serveur
+    local_hit = None
+    if sim.local_list_enabled and id_tag in sim.local_list:
+        info = sim.local_list[id_tag] or {}
+        local_status = info.get("status", "Invalid")
+        local_hit = local_status
+        sim.log("⟳ info", "Authorize — hit LocalAuthList",
+                {"id_tag": id_tag, "status": local_status})
+        if local_status != "Accepted":
+            sim.log("✗ error", "Authorize refused (LocalAuthList)",
+                    {"id_tag": id_tag, "status": local_status})
+            return
+
+    if local_hit is None:
+        try:
+            sim.log("→ sent", "Authorize", {"id_tag": id_tag})
+            auth = await sim._cp.call(call.Authorize(id_tag=id_tag))
+            status = "Invalid"
+            if auth and auth.id_tag_info:
+                status = auth.id_tag_info.get("status", "Invalid")
+            sim.log("← recv", "Authorize.response", {"status": status})
+            if status != "Accepted":
+                sim.log("✗ error", "Authorize refused — abort StartTransaction",
+                        {"status": status})
+                return
+        except Exception as e:
+            sim.log("✗ error", "Authorize", {"error": str(e)})
+            # Permissif : on continue même sans Authorize (certaines bornes le skip)
+
+    # 2. StartTransaction
     sim.meter_start_wh    = sim.meter_wh
     sim.session_energy_wh = 0.0
     sim.session_start     = datetime.now(timezone.utc)
+
+    # Sprint 32 P3 — consomme la réservation locale matchant le id_tag
+    matching_rid = None
+    for rid, res in list(sim.active_reservations.items()):
+        if res.get("id_tag") == id_tag:
+            matching_rid = rid
+            sim.active_reservations.pop(rid, None)
+            break
 
     payload = {
         "connector_id": 1, "id_tag": id_tag,
         "meter_start": int(sim.meter_wh),
         "timestamp": sim.session_start.isoformat(),
     }
+    if matching_rid is not None:
+        payload["reservation_id"] = matching_rid
     sim.log("→ sent", "StartTransaction", payload)
     try:
-        resp = await sim._cp.call(call.StartTransaction(
+        st_kwargs = dict(
             connector_id=1,
             id_tag=id_tag,
             meter_start=int(sim.meter_wh),
             timestamp=sim.session_start.isoformat(),
-        ))
-        # ocpp==1.0.0 retourne None sur CALLERROR au lieu de lever une exception
+        )
+        if matching_rid is not None:
+            st_kwargs["reservation_id"] = matching_rid
+        resp = await sim._cp.call(call.StartTransaction(**st_kwargs))
         if resp is None:
-            sim.log("✗ error", "StartTransaction", {
-                "error": "Pas de réponse (CALLERROR) — vérifier les logs serveur"
-            })
+            sim.log("✗ error", "StartTransaction",
+                    {"error": "Pas de réponse (CALLERROR)"})
             return
         sim.transaction_id = resp.transaction_id
         sim.log("← recv", "StartTransaction.response", {
@@ -406,6 +645,9 @@ async def _start_transaction(id_tag: str = "LOCAL"):
         sim.charging = True
         await _set_status("Charging")
 
+        # 3. MeterValues Transaction.Begin (obligatoire pour traçabilité énergie)
+        await _send_meter_values(context="Transaction.Begin")
+
         _cancel_tasks()
         sim._charge_task = asyncio.create_task(_charge_loop())
         sim._meter_task  = asyncio.create_task(_meter_loop())
@@ -414,11 +656,27 @@ async def _start_transaction(id_tag: str = "LOCAL"):
 
 
 async def _do_stop(reason: str = "Remote"):
-    """Arrête la charge et envoie StopTransaction."""
-    _cancel_tasks()
-    sim.charging  = False
-    sim.current_a = 0.0
-    sim.power_w   = 0.0
+    """Arrête la charge et envoie StopTransaction.
+
+    Injection possible : contactor_welded = bug où le relais reste collé,
+    la charge continue physiquement alors que StopTransaction est envoyé.
+    C'est un défaut réel documenté sur certaines bornes entrée de gamme.
+    """
+    # MeterValues Transaction.End AVANT d'annuler la task (sinon compteur figé)
+    if sim._cp and sim.transaction_id is not None:
+        try:
+            await _send_meter_values(context="Transaction.End")
+        except Exception:
+            pass
+
+    if not sim.contactor_welded:
+        _cancel_tasks()
+        sim.charging  = False
+        sim.current_a = 0.0
+        sim.power_w   = 0.0
+    else:
+        sim.log("⟳ info",
+                "BUG contactor_welded — charge continue malgré StopTransaction", {})
 
     await _set_status("Finishing")
     await asyncio.sleep(1)
@@ -444,14 +702,15 @@ async def _do_stop(reason: str = "Remote"):
     sim.transaction_id = None
     sim.session_start  = None
 
+    # Persister le compteur (EEPROM simulé)
+    sim._save_persistent_state()
+
     if sim.vehicle_plugged and reason not in ("EVDisconnected",):
-        # Véhicule encore branché — rester en Finishing
         await _set_status("Finishing")
     else:
         sim.vehicle_plugged = False
         await _set_status("Available")
 
-    # Si Inoperative schedulée, l'appliquer maintenant
     if sim.availability == "Inoperative":
         await _set_status("Unavailable")
 
@@ -459,45 +718,95 @@ async def _do_stop(reason: str = "Remote"):
 
 
 async def _charge_loop():
-    """Boucle principale de simulation de charge (tourne à 1 Hz)."""
+    """Boucle principale avec courbe CC/CV réaliste (1 Hz).
+
+    - CC (constant current) tant que SOC < cc_cv_threshold_soc
+    - Tapering linéaire jusqu'à cc_cv_end_soc (décroît vers 8 % du max)
+    - Bruit ADC ±0.3 % sur courant, chute tension proportionnelle au courant
+    - Thermique : monte avec power, se lisse avec filtre exponentiel
+    - Injection : faulted, meter_rollback, comm_slow, stuck_charging
+    """
     while True:
+        # ── Fault Faulted : coupure nette ────────────────
+        if sim.fault_injection == "faulted":
+            sim.current_a = 0.0
+            sim.power_w   = 0.0
+            if sim.conn1_status != "Faulted":
+                await _set_status("Faulted")
+            await sim.broadcast()
+            await asyncio.sleep(1)
+            # Tant que faulted, on reste ici (sortie via fault clear)
+            if not sim.charging:
+                break
+            continue
+
         if not sim.charging or not sim.vehicle_plugged:
             break
 
-        eff_current = max(0.0, min(sim.max_current_a, 32.0))
-        if eff_current <= 0:
-            sim.current_a = 0.0
-            sim.power_w   = 0.0
-            if sim.conn1_status == "Charging":
-                await _set_status("SuspendedEVSE")
-            await sim.broadcast()
-            await asyncio.sleep(1)
-            continue
+        # ── Courbe CC/CV ─────────────────────────────────
+        base_current = max(0.0, min(sim.max_current_a, _max_current_for_mode()))
+        if sim.soc_pct < sim.cc_cv_threshold_soc:
+            eff_current = base_current
+        elif sim.soc_pct < sim.cc_cv_end_soc:
+            span     = max(0.1, sim.cc_cv_end_soc - sim.cc_cv_threshold_soc)
+            progress = (sim.soc_pct - sim.cc_cv_threshold_soc) / span
+            eff_current = base_current * (1.0 - progress * 0.92)
+        else:
+            eff_current = base_current * 0.08   # CV : 8% résiduel
 
+        # Bruit ADC ±0.3%
+        if sim.noise_enabled and eff_current > 0:
+            eff_current *= (1.0 + random.uniform(-0.003, 0.003))
+
+        # Tension : nominal − chute câble (0.015 V/A empirique) + bruit
+        v_drop   = 0.015 * eff_current
+        v_noise  = random.uniform(-0.8, 0.8) if sim.noise_enabled else 0.0
+        v_live   = sim.voltage_nominal_v - v_drop + v_noise
+
+        # Fréquence réseau ±0.05 Hz
+        sim.line_freq_hz = 60.0 + (random.uniform(-0.05, 0.05) if sim.noise_enabled else 0.0)
+
+        # Power : mono = V × I × PF ; 3ph = √3 × V(L-L) × I × PF
+        if sim.phase_mode == "commercial_l2_3ph":
+            sim.power_w = math.sqrt(3.0) * v_live * eff_current * POWER_FACTOR
+        else:
+            sim.power_w = v_live * eff_current * POWER_FACTOR
         sim.current_a = eff_current
-        sim.power_w   = VOLTAGE_V * eff_current * POWER_FACTOR
 
-        # Énergie livrée (multipliée par speed pour la simulation rapide)
+        # SuspendedEVSE si limit=0 forcé par SetChargingProfile
+        if base_current <= 0.0 and sim.conn1_status == "Charging":
+            sim.power_w = 0.0
+            await _set_status("SuspendedEVSE")
+
+        # Thermique : cible = ambiant + 0.04 × kW (filtrée)
+        target_temp = sim.ambient_temp_c + 0.04 * (sim.power_w / 1000.0)
+        sim.internal_temp_c += (target_temp - sim.internal_temp_c) * 0.05
+        if sim.noise_enabled:
+            sim.internal_temp_c += random.uniform(-0.1, 0.1)
+
+        # Énergie livrée (multipliée par speed)
         delta_wh = (sim.power_w / 3600.0) * sim.speed
         sim.session_energy_wh += delta_wh
-        sim.meter_wh          += delta_wh
 
-        # SOC : delta_wh / capacité_totale_wh × 100
-        sim.soc_pct = min(sim.soc_target,
-            sim.soc_pct + delta_wh / (sim.battery_kwh * 10.0)
-        )
+        if sim.fault_injection == "meter_rollback":
+            # Bug firmware connu : compteur régresse
+            sim.meter_wh = max(0.0, sim.meter_wh - 10.0 * sim.speed)
+        else:
+            sim.meter_wh += delta_wh
+
+        # SOC : delta_wh / (battery_kwh × 10) (10 Wh par 1% pour 1 kWh)
+        # stuck_charging : SOC ne monte pas (injection bug)
+        if sim.fault_injection != "stuck_charging":
+            sim.soc_pct = min(sim.soc_target,
+                sim.soc_pct + delta_wh / (sim.battery_kwh * 10.0)
+            )
 
         if sim.soc_pct >= sim.soc_target:
-            # Cible atteinte : véhicule suspend la charge
             sim.soc_pct   = sim.soc_target
             sim.charging  = False
             sim.current_a = 0.0
             sim.power_w   = 0.0
-            if sim.soc_target >= 100.0:
-                await _set_status("SuspendedEV")
-            else:
-                # Cible personnalisée atteinte
-                await _set_status("SuspendedEV")
+            await _set_status("SuspendedEV")
             await sim.broadcast()
             break
 
@@ -515,32 +824,72 @@ async def _meter_loop():
         await _send_meter_values()
 
 
-async def _send_meter_values():
-    """Construit et envoie un message MeterValues."""
+async def _send_meter_values(context: str = "Sample.Periodic"):
+    """Construit et envoie un MeterValues conforme OCPP 1.6J §7.22.
+
+    - Chaque sample inclut le `context` (Sample.Periodic, Transaction.Begin,
+      Transaction.End) — indispensable côté serveur pour filtrer (A4).
+    - Mono : Current.Import simple.
+    - 3ph  : Current.Import L1-N/L2-N/L3-N avec déséquilibre ±2 %.
+    - Ajoute Temperature (°C) + Frequency (Hz) — mesures standard OCPP.
+    """
     now = datetime.now(timezone.utc).isoformat()
-    meter_value = [{
-        "timestamp": now,
-        "sampled_value": [
-            {"measurand": "Energy.Active.Import.Register",
-             "value": str(round(sim.meter_wh, 1)), "unit": "Wh"},
-            {"measurand": "Power.Active.Import",
-             "value": str(round(sim.power_w, 0)), "unit": "W"},
-            {"measurand": "Current.Import",
-             "value": str(round(sim.current_a, 1)), "unit": "A"},
-            {"measurand": "Voltage",
-             "value": str(round(VOLTAGE_V, 0)), "unit": "V"},
-            {"measurand": "SoC",
-             "value": str(round(sim.soc_pct, 1)), "unit": "Percent"},
-        ],
-    }]
+    sampled: List[Dict] = [
+        {"measurand": "Energy.Active.Import.Register",
+         "context":   context,
+         "value":     str(round(sim.meter_wh, 1)), "unit": "Wh"},
+        {"measurand": "Power.Active.Import",
+         "context":   context,
+         "value":     str(round(sim.power_w, 0)), "unit": "W"},
+        {"measurand": "Voltage",
+         "context":   context,
+         "value":     str(round(sim.voltage_nominal_v, 0)), "unit": "V"},
+        {"measurand": "SoC",
+         "context":   context,
+         "value":     str(round(sim.soc_pct, 1)), "unit": "Percent"},
+        {"measurand": "Temperature",
+         "context":   context,
+         "value":     str(round(sim.internal_temp_c, 1)), "unit": "Celsius"},
+        {"measurand": "Frequency",
+         "context":   context,
+         "value":     str(round(sim.line_freq_hz, 2))},
+    ]
+
+    # Current : mono vs 3 phases
+    if sim.phase_mode == "commercial_l2_3ph" and sim.current_a > 0:
+        i_total = sim.current_a
+        # Chaque phase porte I_total en mode courant d'entrée ligne
+        # (pas de division — chaque ligne voit le même courant en wye)
+        for phase in ("L1-N", "L2-N", "L3-N"):
+            jit = (1.0 + random.uniform(-0.02, 0.02)) if sim.noise_enabled else 1.0
+            sampled.append({
+                "measurand": "Current.Import",
+                "context":   context,
+                "phase":     phase,
+                "value":     str(round(i_total * jit, 1)), "unit": "A",
+            })
+    else:
+        sampled.append({
+            "measurand": "Current.Import",
+            "context":   context,
+            "value":     str(round(sim.current_a, 1)), "unit": "A",
+        })
+
+    meter_value = [{"timestamp": now, "sampled_value": sampled}]
     sim.log("→ sent", "MeterValues", {
+        "context":   context,
+        "n_samples": len(sampled),
         "energy_wh": round(sim.meter_wh, 1),
         "power_w":   round(sim.power_w, 0),
-        "current_a": round(sim.current_a, 1),
         "soc_pct":   round(sim.soc_pct, 1),
+        "temp_c":    round(sim.internal_temp_c, 1),
     })
+
+    # Latence injectée (bug réseau simulé)
+    if sim.fault_injection == "comm_slow":
+        await asyncio.sleep(2.0)
+
     try:
-        # transaction_id est optionnel — ne pas l'inclure si None
         mv_kwargs: dict = {"connector_id": 1, "meter_value": meter_value}
         if sim.transaction_id is not None:
             mv_kwargs["transaction_id"] = sim.transaction_id
@@ -782,6 +1131,96 @@ async def clear_messages():
     return {"ok": True}
 
 
+# ─── Sprint 27 — Injection de défauts ────────────────────
+class FaultRequest(BaseModel):
+    type: Optional[str] = None      # faulted | meter_rollback | comm_slow | stuck_charging | contactor_welded | ev_disconnect | clear
+    error_code: Optional[str] = "NoError"
+
+
+@app.post("/api/fault")
+async def inject_fault(req: FaultRequest):
+    ftype = req.type
+    sim.fault_error_code = req.error_code or "NoError"
+
+    if ftype == "faulted":
+        sim.fault_injection = "faulted"
+        await _set_status("Faulted")
+        sim.log("⚠ fault", f"Injection Faulted code={sim.fault_error_code}", {})
+
+    elif ftype == "ev_disconnect":
+        if sim.charging:
+            await _do_stop("EVDisconnected")
+        sim.vehicle_plugged = False
+        sim.fault_injection = None
+        await _set_status("Available")
+        sim.log("⚠ fault", "Injection EV_disconnect mid-charge", {})
+
+    elif ftype == "contactor_welded":
+        sim.contactor_welded = True
+        sim.fault_injection = None
+        sim.log("⚠ fault", "Bug contactor_welded armé — StopTx n'arrêtera pas la charge", {})
+
+    elif ftype in ("meter_rollback", "comm_slow", "stuck_charging"):
+        sim.fault_injection = ftype
+        sim.log("⚠ fault", f"Injection {ftype} active", {})
+
+    elif ftype == "clear":
+        sim.fault_injection = None
+        sim.contactor_welded = False
+        sim.fault_error_code = "NoError"
+        if sim.conn1_status == "Faulted":
+            await _set_status("Preparing" if sim.vehicle_plugged else "Available")
+        sim.log("⟳ info", "Défauts effacés", {})
+
+    else:
+        return {"ok": False, "detail": f"Type de défaut inconnu: {ftype}"}
+
+    await sim.broadcast()
+    return {
+        "ok": True,
+        "fault_injection":   sim.fault_injection,
+        "fault_error_code":  sim.fault_error_code,
+        "contactor_welded":  sim.contactor_welded,
+    }
+
+
+class PhaseModeRequest(BaseModel):
+    mode: str   # "residential_l2" | "commercial_l2_3ph"
+
+
+@app.post("/api/phase_mode")
+async def set_phase_mode(req: PhaseModeRequest):
+    if req.mode not in ("residential_l2", "commercial_l2_3ph"):
+        return {"ok": False, "detail": "Mode invalide"}
+    if sim.charging:
+        return {"ok": False, "detail": "Impossible de changer en cours de charge"}
+
+    sim.phase_mode = req.mode
+    if req.mode == "residential_l2":
+        sim.voltage_nominal_v = 240.0
+        sim.max_current_a     = 40.0
+    else:   # commercial_l2_3ph
+        sim.voltage_nominal_v = 208.0
+        sim.max_current_a     = 48.0
+
+    sim.log("⟳ info", f"Mode phase → {sim.phase_mode} "
+                      f"({sim.voltage_nominal_v:.0f}V, {sim.max_current_a:.0f}A)", {})
+    await sim.broadcast()
+    return {"ok": True, "mode": sim.phase_mode,
+            "voltage": sim.voltage_nominal_v, "max_current": sim.max_current_a}
+
+
+class AmbientRequest(BaseModel):
+    temp_c: float
+
+
+@app.post("/api/ambient")
+async def set_ambient(req: AmbientRequest):
+    sim.ambient_temp_c = max(-40.0, min(60.0, req.temp_c))
+    await sim.broadcast()
+    return {"ok": True, "ambient_temp_c": sim.ambient_temp_c}
+
+
 @app.get("/api/state")
 async def get_state():
     return sim.snapshot()
@@ -946,6 +1385,51 @@ main{padding:1rem;max-width:1400px;margin:0 auto;display:grid;grid-template-colu
         Temps pour 60 kWh @ 32A : <span id="charge-time">~8h</span>
       </div>
     </div>
+
+    <!-- Sprint 27 : Mode phase (Québec) -->
+    <div class="card">
+      <h2>Mode alimentation (Québec)</h2>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem">
+        <button class="speed-btn active" onclick="setPhaseMode('residential_l2')" data-mode="residential_l2">Résidentiel L2 240V</button>
+        <button class="speed-btn" onclick="setPhaseMode('commercial_l2_3ph')" data-mode="commercial_l2_3ph">Commercial L2 3ph 208V</button>
+      </div>
+      <div style="font-size:.68rem;color:#475569" id="phase-hint">
+        Résidentiel : split-phase 240V (TechnoVE/Grizzl-E typiques). Commercial : triphasé 208V L-L (niveau 2 public).
+      </div>
+      <div style="margin-top:.5rem;display:flex;gap:.5rem;align-items:center">
+        <span style="font-size:.7rem;color:#94a3b8">Ambiant :</span>
+        <input type="number" id="ambient-input" value="22" step="1" min="-40" max="60"
+               style="width:60px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:4px;padding:.25rem;font-size:.75rem">
+        <span style="font-size:.7rem;color:#94a3b8">°C</span>
+        <button class="btn-sm" onclick="setAmbient()" style="background:#0284c7;color:#fff">Appliquer</button>
+      </div>
+    </div>
+
+    <!-- Sprint 27 : Injection de défauts -->
+    <div class="card">
+      <h2>Injection de défauts <span style="font-size:.65rem;color:#94a3b8;font-weight:400">(test conformité)</span></h2>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:.4rem">
+        <button class="btn-sm" onclick="injectFault('faulted', 'GroundFailure')"
+                style="background:#7f1d1d;color:#fecaca">⚠ Faulted (GroundFailure)</button>
+        <button class="btn-sm" onclick="injectFault('meter_rollback')"
+                style="background:#7c2d12;color:#fed7aa">↓ Bug compteur (rollback)</button>
+        <button class="btn-sm" onclick="injectFault('contactor_welded')"
+                style="background:#7c2d12;color:#fed7aa">⚡ Contacteur soudé</button>
+        <button class="btn-sm" onclick="injectFault('comm_slow')"
+                style="background:#713f12;color:#fde68a">🐌 Latence MeterValues</button>
+        <button class="btn-sm" onclick="injectFault('stuck_charging')"
+                style="background:#713f12;color:#fde68a">🔒 SOC bloqué</button>
+        <button class="btn-sm" onclick="injectFault('ev_disconnect')"
+                style="background:#831843;color:#fce7f3">🔌 EV débranché (mid-charge)</button>
+      </div>
+      <div style="margin-top:.5rem">
+        <button class="btn-sm" onclick="injectFault('clear')"
+                style="background:#064e3b;color:#a7f3d0;width:100%">✓ Effacer tous les défauts</button>
+      </div>
+      <div style="font-size:.68rem;color:#475569;margin-top:.5rem" id="fault-status">
+        Aucun défaut actif
+      </div>
+    </div>
   </div>
 
   <!-- Colonne droite : métriques + état -->
@@ -1038,14 +1522,39 @@ function applyState(s) {
 
   // Métriques
   const pw = s.power_w;
+  const vNom = s.voltage_nominal_v || 240;
+  const phaseLbl = s.phase_mode === 'commercial_l2_3ph' ? '3ph' : '1ph';
   document.getElementById('m-power').textContent   = pw > 0 ? fmtPower(pw) : '— W';
   document.getElementById('m-power-sub').textContent =
-    pw > 0 ? `${(pw/1000).toFixed(2)} kW — ${s.current_a.toFixed(1)} A × 240 V` : 'En attente de charge';
+    pw > 0 ? `${(pw/1000).toFixed(2)} kW — ${s.current_a.toFixed(1)} A × ${vNom.toFixed(0)} V ${phaseLbl}` : 'En attente de charge';
   document.getElementById('m-cur').textContent    = s.current_a > 0 ? s.current_a.toFixed(1) + ' A' : '— A';
-  document.getElementById('m-volt').textContent   = '240 V';
+  document.getElementById('m-volt').textContent   = vNom.toFixed(0) + ' V';
   document.getElementById('m-maxcur').textContent = s.max_current_a + ' A';
   document.getElementById('m-avail').textContent  = s.availability;
   document.getElementById('m-speed').textContent  = '×' + s.speed;
+
+  // Sprint 27 — Mode phase + ambient + défauts
+  document.querySelectorAll('[data-mode]').forEach(b =>
+    b.classList.toggle('active', b.dataset.mode === s.phase_mode));
+  if (s.phase_mode === 'commercial_l2_3ph') {
+    document.getElementById('phase-hint').textContent =
+      `Commercial triphasé 208V L-L × 3 — I max ${s.max_current_a}A · interne ${s.internal_temp_c.toFixed(1)}°C`;
+  } else {
+    document.getElementById('phase-hint').textContent =
+      `Résidentiel 240V split-phase — I max ${s.max_current_a}A · interne ${s.internal_temp_c.toFixed(1)}°C`;
+  }
+  const fstat = document.getElementById('fault-status');
+  const parts = [];
+  if (s.fault_injection) parts.push(`défaut: ${s.fault_injection}`);
+  if (s.contactor_welded) parts.push('contacteur soudé');
+  if (s.fault_error_code && s.fault_error_code !== 'NoError') parts.push(`code: ${s.fault_error_code}`);
+  if (parts.length) {
+    fstat.textContent = '⚠ ' + parts.join(' · ');
+    fstat.style.color = '#fbbf24';
+  } else {
+    fstat.textContent = 'Aucun défaut actif';
+    fstat.style.color = '#475569';
+  }
 
   // Session
   document.getElementById('si-dur').textContent   = s.session_duration || '—';
@@ -1172,6 +1681,45 @@ async function reconnect() {
 
 async function clearLog() {
   await fetch('/api/messages', {method: 'DELETE'});
+}
+
+// ── Sprint 27 : Injection de défauts ─────────────────
+async function injectFault(type, errorCode) {
+  const body = {type: type};
+  if (errorCode) body.error_code = errorCode;
+  const r = await fetch('/api/fault', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  });
+  const j = await r.json();
+  if (!j.ok) alert('Erreur: ' + (j.detail || 'inconnue'));
+}
+
+async function setPhaseMode(mode) {
+  const r = await fetch('/api/phase_mode', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({mode: mode}),
+  });
+  const j = await r.json();
+  if (!j.ok) {
+    alert('Changement impossible: ' + (j.detail || 'inconnue'));
+    return;
+  }
+  document.querySelectorAll('[data-mode]').forEach(b =>
+    b.classList.toggle('active', b.dataset.mode === mode)
+  );
+}
+
+async function setAmbient() {
+  const v = parseFloat(document.getElementById('ambient-input').value);
+  if (isNaN(v)) return;
+  await fetch('/api/ambient', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({temp_c: v}),
+  });
 }
 
 function toggleSettings() {

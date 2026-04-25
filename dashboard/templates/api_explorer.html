@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OCPP API Explorer</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    html,body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+    a{color:#38bdf8;text-decoration:none}
+    a:hover{text-decoration:underline}
+
+    /* Header sticky */
+    header{background:linear-gradient(180deg,#1e293b 0%,#172033 100%);border-bottom:1px solid #334155;padding:.85rem 1.5rem;position:sticky;top:86px;z-index:50;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+    .h-row{display:flex;align-items:center;gap:1rem;flex-wrap:wrap;max-width:1500px;margin:0 auto}
+    .h-title{font-size:1.05rem;font-weight:700;color:#38bdf8;display:flex;align-items:center;gap:.4rem}
+    .h-title small{color:#94a3b8;font-weight:400;font-size:.78rem;margin-left:.4rem}
+    .h-spacer{flex:1}
+    .h-ctrl{display:flex;align-items:center;gap:.4rem;font-size:.82rem;color:#94a3b8}
+    .h-ctrl select,.h-ctrl input{background:#0f172a;border:1px solid #334155;color:#e2e8f0;border-radius:6px;padding:5px 9px;font-size:.83rem;font-family:inherit;min-width:160px}
+    .h-ctrl select:focus,.h-ctrl input:focus{outline:none;border-color:#38bdf8}
+    .h-ctrl .charger-status{font-size:.7rem;padding:2px 7px;border-radius:999px;font-weight:600}
+    .cs-on{background:#166534;color:#86efac}
+    .cs-off{background:#7f1d1d;color:#fca5a5}
+    .h-link{padding:6px 12px;border:1px solid #334155;border-radius:6px;color:#94a3b8;font-size:.78rem;font-weight:600}
+    .h-link:hover{background:#334155;color:#e2e8f0;text-decoration:none}
+
+    /* Tabs */
+    .tabs-wrap{background:#172033;border-bottom:1px solid #334155;padding:0 1.5rem;position:sticky;top:148px;z-index:49;overflow-x:auto}
+    .tabs{display:flex;gap:.25rem;max-width:1500px;margin:0 auto;min-width:max-content}
+    .tab{padding:.6rem 1rem;background:transparent;border:none;color:#94a3b8;cursor:pointer;font-size:.85rem;font-weight:600;border-bottom:2px solid transparent;transition:all .15s;font-family:inherit;white-space:nowrap;display:flex;align-items:center;gap:.4rem}
+    .tab:hover{color:#e2e8f0}
+    .tab.active{color:#38bdf8;border-bottom-color:#38bdf8}
+    .tab .count{background:#334155;color:#cbd5e1;font-size:.68rem;font-weight:700;padding:1px 7px;border-radius:999px}
+    .tab.active .count{background:#1e3a8a;color:#93c5fd}
+
+    /* Main */
+    main{padding:1.25rem 1.5rem 4rem;max-width:1500px;margin:0 auto}
+    .intro{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.25rem;color:#cbd5e1;font-size:.88rem;line-height:1.5}
+    .intro h2{color:#38bdf8;font-size:1rem;margin-bottom:.4rem}
+
+    /* Endpoint card */
+    .ep{background:#1e293b;border:1px solid #334155;border-radius:10px;margin-bottom:1rem;overflow:hidden}
+    .ep-head{padding:.85rem 1.1rem;display:flex;align-items:center;gap:.75rem;cursor:pointer;border-bottom:1px solid transparent;transition:background .12s}
+    .ep-head:hover{background:#172033}
+    .ep.open .ep-head{border-bottom-color:#334155;background:#172033}
+    .ep-method{font-family:ui-monospace,Menlo,monospace;font-weight:700;font-size:.74rem;padding:3px 9px;border-radius:5px;letter-spacing:.04em}
+    .m-GET   {background:#1e3a8a;color:#93c5fd}
+    .m-POST  {background:#166534;color:#86efac}
+    .m-PUT   {background:#78350f;color:#fcd34d}
+    .m-PATCH {background:#581c87;color:#d8b4fe}
+    .m-DELETE{background:#7f1d1d;color:#fca5a5}
+    .ep-path{font-family:ui-monospace,Menlo,monospace;font-size:.85rem;color:#e2e8f0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .ep-summary{color:#94a3b8;font-size:.83rem;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .ep-arrow{color:#64748b;font-size:.7rem;transition:transform .2s}
+    .ep.open .ep-arrow{transform:rotate(90deg)}
+
+    .ep-body{display:none;padding:1rem 1.1rem 1.1rem}
+    .ep.open .ep-body{display:block}
+    .ep-desc{color:#cbd5e1;font-size:.83rem;line-height:1.55;margin-bottom:.85rem}
+    .ep-desc p{margin-bottom:.5rem}
+    .ep-desc strong{color:#e2e8f0}
+    .ep-desc code{background:#0f172a;padding:1px 6px;border-radius:4px;font-size:.78rem;color:#7dd3fc;font-family:ui-monospace,Menlo,monospace}
+
+    .field-grp{margin-bottom:.85rem}
+    .field-lbl{font-size:.74rem;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem}
+    .params-grid{display:grid;grid-template-columns:160px 1fr 1fr;gap:.4rem .65rem;align-items:center;font-size:.82rem}
+    .params-grid .pn{font-family:ui-monospace,Menlo,monospace;color:#7dd3fc;font-size:.78rem}
+    .params-grid .pd{color:#64748b;font-size:.74rem}
+    .params-grid input{background:#0f172a;border:1px solid #334155;color:#e2e8f0;border-radius:5px;padding:5px 8px;font-size:.82rem;font-family:inherit;width:100%}
+    .params-grid input:focus{outline:none;border-color:#38bdf8}
+    .req-flag{color:#fca5a5;font-size:.7rem;margin-left:3px}
+
+    textarea.body-edit{width:100%;min-height:140px;background:#0f172a;border:1px solid #334155;color:#e2e8f0;border-radius:6px;padding:.6rem .75rem;font-family:ui-monospace,Menlo,monospace;font-size:.8rem;line-height:1.5;resize:vertical}
+    textarea.body-edit:focus{outline:none;border-color:#38bdf8}
+
+    .ep-actions{display:flex;gap:.5rem;align-items:center;margin-top:.6rem}
+    .btn{padding:7px 16px;border-radius:7px;border:none;font-size:.82rem;font-weight:600;cursor:pointer;font-family:inherit;transition:opacity .15s}
+    .btn:hover:not(:disabled){opacity:.85}
+    .btn:disabled{opacity:.5;cursor:not-allowed}
+    .btn-go{background:#1d4ed8;color:#fff}
+    .btn-reset{background:#334155;color:#cbd5e1}
+
+    .resp{margin-top:.85rem;border-top:1px solid #334155;padding-top:.85rem;display:none}
+    .resp.show{display:block}
+    .resp-meta{display:flex;gap:.5rem;align-items:center;font-size:.78rem;margin-bottom:.5rem;flex-wrap:wrap}
+    .resp-status{font-family:ui-monospace,Menlo,monospace;font-weight:700;padding:3px 9px;border-radius:5px;font-size:.76rem}
+    .s-2xx{background:#166534;color:#86efac}
+    .s-3xx{background:#1e3a8a;color:#93c5fd}
+    .s-4xx{background:#78350f;color:#fcd34d}
+    .s-5xx{background:#7f1d1d;color:#fca5a5}
+    .resp-time{color:#64748b}
+    .resp-body{background:#0f172a;border:1px solid #334155;border-radius:6px;padding:.65rem .85rem;font-family:ui-monospace,Menlo,monospace;font-size:.78rem;color:#cbd5e1;max-height:340px;overflow:auto;white-space:pre-wrap;word-break:break-word}
+    .json-key{color:#7dd3fc}
+    .json-str{color:#86efac}
+    .json-num{color:#fcd34d}
+    .json-bool{color:#fca5a5}
+    .json-null{color:#94a3b8;font-style:italic}
+
+    .empty{text-align:center;color:#64748b;padding:3rem;font-style:italic}
+
+    /* Loading */
+    .spinner{display:inline-block;width:13px;height:13px;border:2px solid #334155;border-top-color:#38bdf8;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px;margin-right:.4rem}
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    /* Charger menu chip in header */
+    .ch-chip{display:flex;align-items:center;gap:.4rem;background:#0f172a;border:1px solid #334155;border-radius:7px;padding:3px 4px 3px 10px}
+    .ch-chip .lbl{font-size:.72rem;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+
+    /* Toast */
+    .toast{position:fixed;bottom:1rem;right:1rem;background:#1e293b;border:1px solid #38bdf8;padding:.7rem 1rem;border-radius:8px;color:#e2e8f0;font-size:.85rem;z-index:200;opacity:0;transition:opacity .2s;pointer-events:none;max-width:380px;box-shadow:0 4px 16px rgba(0,0,0,.4)}
+    .toast.show{opacity:1}
+    .toast.error{border-color:#ef4444;color:#fca5a5}
+
+    /* Search */
+    .search-wrap{position:relative}
+    .search-wrap::before{content:"";position:absolute;left:9px;top:50%;width:11px;height:11px;border:1.5px solid #64748b;border-radius:50%;transform:translateY(-65%)}
+    .search-wrap::after{content:"";position:absolute;left:18px;top:50%;width:5px;height:1.5px;background:#64748b;transform:translateY(2px) rotate(45deg);transform-origin:left}
+    .search-wrap input{padding-left:28px}
+  </style>
+</head>
+<body>
+
+{# Sprint 36 — navigation unifiée (primaire + sous-menu API) #}
+{% set nav_section = 'api' %}
+{% set nav_subsection = 'explorer' %}
+{% include "partials/_site_nav.html" %}
+
+<header>
+  <div class="h-row">
+    <div class="h-title">⚡ OCPP API Explorer <small id="api-version"></small></div>
+
+    <div class="h-spacer"></div>
+
+    <div class="h-ctrl search-wrap">
+      <input type="text" id="search" placeholder="Filtrer endpoints…" autocomplete="off">
+    </div>
+
+    <div class="h-ctrl ch-chip">
+      <span class="lbl">Borne</span>
+      <select id="charger-select" title="Cette borne sera injectée automatiquement dans tous les payloads">
+        <option value="">— chargement —</option>
+      </select>
+      <span id="charger-status" class="charger-status cs-off">?</span>
+    </div>
+
+    <a class="h-link" href="/docs" title="Swagger UI standard">Swagger</a>
+    <a class="h-link" href="/openapi.json" title="Spec OpenAPI brute">JSON</a>
+  </div>
+</header>
+
+<div class="tabs-wrap">
+  <div class="tabs" id="tabs"></div>
+</div>
+
+<main>
+  <div class="intro">
+    <h2>Bienvenue sur l'API Explorer du serveur OCPP</h2>
+    <p>Toutes les commandes que le serveur peut envoyer aux bornes (Server → Charge Point), groupées par <strong>profil OCPP&nbsp;1.6J</strong>. Sélectionne une borne dans le menu en haut à droite — son ID s'inscrira automatiquement dans chaque payload. Clique un endpoint pour voir le détail, modifier le corps JSON, et exécuter en direct.</p>
+  </div>
+
+  <div id="endpoints"></div>
+  <div id="empty" class="empty" style="display:none">Aucun endpoint pour ce filtre.</div>
+</main>
+
+<div id="toast" class="toast"></div>
+
+<script>
+const STATE = {
+  spec: null,
+  chargers: [],
+  selectedCharger: null,
+  activeTab: null,
+  search: '',
+};
+
+// ── Helpers ──────────────────────────────────────────────────────────
+function escapeHtml(s){if(s==null)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function showToast(msg,err){const t=document.getElementById('toast');t.textContent=msg;t.className='toast show'+(err?' error':'');setTimeout(()=>{t.className='toast'},3500)}
+function statusClass(c){if(c<300)return 's-2xx';if(c<400)return 's-3xx';if(c<500)return 's-4xx';return 's-5xx'}
+
+// JSON syntax highlighting (simple)
+function highlightJson(obj){
+  let json;
+  try{json=typeof obj==='string'?obj:JSON.stringify(obj,null,2)}
+  catch(e){return escapeHtml(String(obj))}
+  return escapeHtml(json).replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,m=>{
+    let cls='json-num';
+    if(/^"/.test(m)){cls=/:$/.test(m)?'json-key':'json-str'}
+    else if(/true|false/.test(m))cls='json-bool';
+    else if(/null/.test(m))cls='json-null';
+    return `<span class="${cls}">${m}</span>`;
+  });
+}
+
+// Markdown très light : `code`, **gras**, retours ligne
+function renderDesc(md){
+  if(!md)return '';
+  let h=escapeHtml(md);
+  h=h.replace(/`([^`]+)`/g,'<code>$1</code>');
+  h=h.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+  h=h.split(/\n\n+/).map(p=>'<p>'+p.replace(/\n/g,'<br>')+'</p>').join('');
+  return h;
+}
+
+// Build example body from a Pydantic schema ($ref or inline)
+function exampleFromSchema(schema, spec){
+  if(!schema)return null;
+  if(schema.$ref){
+    const name=schema.$ref.replace('#/components/schemas/','');
+    const def=spec.components?.schemas?.[name];
+    if(!def)return null;
+    return exampleFromSchema(def,spec);
+  }
+  if(schema.example!==undefined)return schema.example;
+  if(schema.examples && schema.examples.length)return schema.examples[0];
+  if(schema.type==='object' || schema.properties){
+    const out={};
+    for(const [k,v] of Object.entries(schema.properties||{})){
+      let ex=v.example;
+      if(ex===undefined && v.examples && v.examples.length) ex=v.examples[0];
+      if(ex===undefined && v.default!==undefined) ex=v.default;
+      if(ex===undefined && v.$ref) ex=exampleFromSchema(v,spec);
+      if(ex===undefined && v.type==='string') ex='';
+      if(ex===undefined && v.type==='integer') ex=0;
+      if(ex===undefined && v.type==='number') ex=0;
+      if(ex===undefined && v.type==='boolean') ex=false;
+      if(ex===undefined && v.type==='array') ex=[];
+      if(ex===undefined && (v.type==='object'||v.properties)) ex=exampleFromSchema(v,spec)||{};
+      out[k]=ex;
+    }
+    return out;
+  }
+  if(schema.type==='array')return [exampleFromSchema(schema.items,spec)].filter(x=>x!=null);
+  return null;
+}
+
+// Replace charger_id field in a JSON body with selected charger
+function injectCharger(jsonStr){
+  if(!STATE.selectedCharger)return jsonStr;
+  try{
+    const obj=JSON.parse(jsonStr);
+    if(obj && typeof obj==='object' && 'charger_id' in obj){
+      obj.charger_id=STATE.selectedCharger;
+      return JSON.stringify(obj,null,2);
+    }
+  }catch(e){}
+  return jsonStr;
+}
+
+// ── Load data ────────────────────────────────────────────────────────
+async function loadAll(){
+  const [spec,chargers]=await Promise.all([
+    fetch('/openapi.json').then(r=>r.json()),
+    fetch('/api/chargers/').then(r=>r.json()).catch(()=>[]),
+  ]);
+  STATE.spec=spec;
+  STATE.chargers=Array.isArray(chargers)?chargers:[];
+
+  document.getElementById('api-version').textContent='v'+(spec.info.version||'?');
+  buildChargerSelect();
+  buildTabs();
+  renderEndpoints();
+}
+
+function buildChargerSelect(){
+  const sel=document.getElementById('charger-select');
+  if(!STATE.chargers.length){
+    sel.innerHTML='<option value="">— aucune borne —</option>';
+    document.getElementById('charger-status').className='charger-status cs-off';
+    document.getElementById('charger-status').textContent='—';
+    return;
+  }
+  sel.innerHTML=STATE.chargers.map(c=>{
+    const online=(c.status||'').toLowerCase()!=='offline';
+    const dot=online?'●':'○';
+    return `<option value="${escapeHtml(c.id)}" data-online="${online}">${dot} ${escapeHtml(c.id)} — ${escapeHtml(c.status||'?')}</option>`;
+  }).join('');
+  // Pré-sélection : 1ère online, sinon 1ère
+  const firstOnline=STATE.chargers.find(c=>(c.status||'').toLowerCase()!=='offline');
+  STATE.selectedCharger=(firstOnline||STATE.chargers[0]).id;
+  sel.value=STATE.selectedCharger;
+  updateChargerStatus();
+  sel.addEventListener('change',()=>{
+    STATE.selectedCharger=sel.value;
+    updateChargerStatus();
+    syncChargerInPayloads();
+  });
+}
+
+function updateChargerStatus(){
+  const c=STATE.chargers.find(x=>x.id===STATE.selectedCharger);
+  const el=document.getElementById('charger-status');
+  if(!c){el.textContent='?';el.className='charger-status cs-off';return}
+  const online=(c.status||'').toLowerCase()!=='offline';
+  el.textContent=online?'online':'offline';
+  el.className='charger-status '+(online?'cs-on':'cs-off');
+}
+
+function syncChargerInPayloads(){
+  // Met à jour le charger_id dans tous les body editor visibles
+  document.querySelectorAll('textarea.body-edit').forEach(t=>{
+    t.value=injectCharger(t.value);
+  });
+  // Et dans tous les inputs path-param charger_id
+  document.querySelectorAll('input[data-pname="charger_id"]').forEach(i=>{
+    i.value=STATE.selectedCharger||'';
+  });
+}
+
+// ── Tabs ─────────────────────────────────────────────────────────────
+function buildTabs(){
+  const tagsMeta=STATE.spec.tags||[];
+  // Compter endpoints par tag
+  const counts={};
+  for(const [path,methods] of Object.entries(STATE.spec.paths||{})){
+    for(const [m,op] of Object.entries(methods)){
+      if(typeof op!=='object'||!op.tags)continue;
+      for(const t of op.tags){counts[t]=(counts[t]||0)+1}
+    }
+  }
+  // On garde l'ordre déclaré dans openapi.tags ; on ajoute les non-déclarés à la fin
+  const ordered=[];
+  for(const t of tagsMeta){if(counts[t.name])ordered.push(t.name)}
+  for(const t of Object.keys(counts)){if(!ordered.includes(t))ordered.push(t)}
+
+  const tabsEl=document.getElementById('tabs');
+  const allCount=Object.values(counts).reduce((a,b)=>a+b,0);
+  const tabsHtml=[`<button class="tab" data-tag="__ALL__">Tous <span class="count">${allCount}</span></button>`];
+  for(const t of ordered){
+    tabsHtml.push(`<button class="tab" data-tag="${escapeHtml(t)}">${escapeHtml(t)} <span class="count">${counts[t]}</span></button>`);
+  }
+  tabsEl.innerHTML=tabsHtml.join('');
+  tabsEl.querySelectorAll('.tab').forEach(b=>{
+    b.addEventListener('click',()=>{
+      STATE.activeTab=b.dataset.tag;
+      tabsEl.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===b));
+      renderEndpoints();
+    });
+  });
+  // Activer "Tous" par défaut
+  STATE.activeTab='__ALL__';
+  tabsEl.querySelector('.tab').classList.add('active');
+}
+
+// ── Endpoints ────────────────────────────────────────────────────────
+function flattenEndpoints(){
+  const out=[];
+  for(const [path,methods] of Object.entries(STATE.spec.paths||{})){
+    for(const [method,op] of Object.entries(methods)){
+      if(typeof op!=='object'||!op.tags)continue;
+      out.push({path,method:method.toUpperCase(),op,tags:op.tags||[]});
+    }
+  }
+  return out;
+}
+
+function renderEndpoints(){
+  const all=flattenEndpoints();
+  const q=STATE.search.toLowerCase().trim();
+  const filtered=all.filter(e=>{
+    if(STATE.activeTab && STATE.activeTab!=='__ALL__'){
+      if(!e.tags.includes(STATE.activeTab))return false;
+    }
+    if(q){
+      const blob=(e.path+' '+(e.op.summary||'')+' '+(e.op.description||'')).toLowerCase();
+      if(!blob.includes(q))return false;
+    }
+    return true;
+  });
+  const root=document.getElementById('endpoints');
+  const empty=document.getElementById('empty');
+  if(!filtered.length){root.innerHTML='';empty.style.display='block';return}
+  empty.style.display='none';
+  // tri par méthode (POST/PATCH d'abord) puis path
+  const ord={POST:0,PATCH:1,PUT:2,DELETE:3,GET:4};
+  filtered.sort((a,b)=>(ord[a.method]??9)-(ord[b.method]??9)||a.path.localeCompare(b.path));
+  root.innerHTML=filtered.map(renderEndpoint).join('');
+  // bind toggle + actions
+  root.querySelectorAll('.ep').forEach(card=>{
+    card.querySelector('.ep-head').addEventListener('click',()=>card.classList.toggle('open'));
+    const btn=card.querySelector('.btn-go');
+    if(btn)btn.addEventListener('click',ev=>{ev.stopPropagation();executeEndpoint(card)});
+    const reset=card.querySelector('.btn-reset');
+    if(reset)reset.addEventListener('click',ev=>{ev.stopPropagation();resetEndpoint(card)});
+  });
+}
+
+function renderEndpoint(e){
+  const opId=`ep-${e.method}-${e.path}`.replace(/[^a-zA-Z0-9]/g,'_');
+  const params=e.op.parameters||[];
+  const pathParams=params.filter(p=>p.in==='path');
+  const queryParams=params.filter(p=>p.in==='query');
+
+  const reqBody=e.op.requestBody;
+  const bodySchema=reqBody?.content?.['application/json']?.schema;
+  let bodyExample=null;
+  if(bodySchema){
+    bodyExample=exampleFromSchema(bodySchema,STATE.spec);
+    if(bodyExample==null)bodyExample={};
+  }
+  let bodyJson='';
+  if(bodyExample!=null){
+    bodyJson=JSON.stringify(bodyExample,null,2);
+    bodyJson=injectCharger(bodyJson);
+  }
+
+  const renderParam=p=>{
+    const def=p.schema?.default;
+    let val=p.example;
+    if(val==null && p.schema?.examples?.length) val=p.schema.examples[0];
+    if(val==null && def!==undefined) val=def;
+    if(val==null && p.name==='charger_id') val=STATE.selectedCharger||'';
+    if(val==null) val='';
+    const desc=p.description||p.schema?.description||'';
+    return `<span class="pn">${escapeHtml(p.name)}${p.required?'<span class="req-flag">*</span>':''}</span>
+            <input type="text" data-pin="${p.in}" data-pname="${escapeHtml(p.name)}" value="${escapeHtml(String(val))}" placeholder="${escapeHtml(p.schema?.type||'')}">
+            <span class="pd">${escapeHtml(desc)}</span>`;
+  };
+
+  return `
+  <div class="ep" id="${opId}" data-method="${e.method}" data-path="${escapeHtml(e.path)}">
+    <div class="ep-head">
+      <span class="ep-method m-${e.method}">${e.method}</span>
+      <span class="ep-path">${escapeHtml(e.path)}</span>
+      <span class="ep-summary">${escapeHtml(e.op.summary||'')}</span>
+      <span class="ep-arrow">▶</span>
+    </div>
+    <div class="ep-body">
+      ${e.op.description?`<div class="ep-desc">${renderDesc(e.op.description)}</div>`:''}
+
+      ${pathParams.length?`
+        <div class="field-grp">
+          <div class="field-lbl">Paramètres de chemin</div>
+          <div class="params-grid">${pathParams.map(renderParam).join('')}</div>
+        </div>`:''}
+
+      ${queryParams.length?`
+        <div class="field-grp">
+          <div class="field-lbl">Paramètres de requête</div>
+          <div class="params-grid">${queryParams.map(renderParam).join('')}</div>
+        </div>`:''}
+
+      ${reqBody?`
+        <div class="field-grp">
+          <div class="field-lbl">Corps (JSON)</div>
+          <textarea class="body-edit" spellcheck="false">${escapeHtml(bodyJson)}</textarea>
+        </div>`:''}
+
+      <div class="ep-actions">
+        <button class="btn btn-go">Exécuter</button>
+        <button class="btn btn-reset">Réinitialiser</button>
+      </div>
+
+      <div class="resp">
+        <div class="resp-meta"></div>
+        <div class="resp-body"></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function buildUrl(card){
+  let path=card.dataset.path;
+  // Substitue les path params
+  card.querySelectorAll('input[data-pin="path"]').forEach(i=>{
+    path=path.replace(`{${i.dataset.pname}}`,encodeURIComponent(i.value));
+  });
+  // Compose query string
+  const qs=[];
+  card.querySelectorAll('input[data-pin="query"]').forEach(i=>{
+    const v=i.value;
+    if(v!=='' && v!=null) qs.push(encodeURIComponent(i.dataset.pname)+'='+encodeURIComponent(v));
+  });
+  if(qs.length) path+=(path.includes('?')?'&':'?')+qs.join('&');
+  return path;
+}
+
+async function executeEndpoint(card){
+  const method=card.dataset.method;
+  const url=buildUrl(card);
+  const bodyEl=card.querySelector('textarea.body-edit');
+  const respWrap=card.querySelector('.resp');
+  const respMeta=card.querySelector('.resp-meta');
+  const respBody=card.querySelector('.resp-body');
+  const btn=card.querySelector('.btn-go');
+  btn.disabled=true;
+  const oldBtn=btn.textContent;
+  btn.innerHTML='<span class="spinner"></span>Exécution…';
+  respWrap.classList.add('show');
+  respMeta.innerHTML='';
+  respBody.textContent='';
+
+  let body=null;
+  if(bodyEl){
+    try{body=JSON.parse(bodyEl.value)}
+    catch(e){
+      respMeta.innerHTML='<span class="resp-status s-4xx">JSON invalide</span>';
+      respBody.textContent=String(e);
+      btn.disabled=false;btn.textContent=oldBtn;
+      return;
+    }
+  }
+  const t0=performance.now();
+  try{
+    const opts={method,headers:{'Accept':'application/json'}};
+    if(body!=null){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(body)}
+    const r=await fetch(url,opts);
+    const dt=Math.round(performance.now()-t0);
+    const text=await r.text();
+    let parsed=text;
+    try{parsed=JSON.parse(text)}catch(e){}
+    respMeta.innerHTML=`<span class="resp-status ${statusClass(r.status)}">HTTP ${r.status}</span>
+                       <span class="resp-time">${dt} ms</span>
+                       <span class="resp-time">${escapeHtml(method+' '+url)}</span>`;
+    respBody.innerHTML=text?highlightJson(parsed):'<span class="json-null">(corps vide)</span>';
+  }catch(e){
+    const dt=Math.round(performance.now()-t0);
+    respMeta.innerHTML=`<span class="resp-status s-5xx">Erreur réseau</span><span class="resp-time">${dt} ms</span>`;
+    respBody.textContent=String(e);
+  }finally{
+    btn.disabled=false;btn.textContent=oldBtn;
+  }
+}
+
+function resetEndpoint(card){
+  // Re-render the single card from the spec (préserve les autres ouverts)
+  const wasOpen=card.classList.contains('open');
+  const method=card.dataset.method;
+  const path=card.dataset.path;
+  const op=STATE.spec.paths[path][method.toLowerCase()];
+  const html=renderEndpoint({path,method,op,tags:op.tags||[]});
+  const tmp=document.createElement('div');tmp.innerHTML=html;
+  const fresh=tmp.firstElementChild;
+  if(wasOpen)fresh.classList.add('open');
+  card.replaceWith(fresh);
+  fresh.querySelector('.ep-head').addEventListener('click',()=>fresh.classList.toggle('open'));
+  fresh.querySelector('.btn-go')?.addEventListener('click',ev=>{ev.stopPropagation();executeEndpoint(fresh)});
+  fresh.querySelector('.btn-reset')?.addEventListener('click',ev=>{ev.stopPropagation();resetEndpoint(fresh)});
+}
+
+// ── Search ───────────────────────────────────────────────────────────
+let searchTimer;
+document.getElementById('search').addEventListener('input',e=>{
+  clearTimeout(searchTimer);
+  searchTimer=setTimeout(()=>{STATE.search=e.target.value;renderEndpoints()},120);
+});
+
+// ── Bootstrap ────────────────────────────────────────────────────────
+loadAll().catch(e=>{showToast('Erreur de chargement : '+e.message,true);console.error(e)});
+
+// Refresh chargers every 30s (status peut changer)
+setInterval(()=>{
+  fetch('/api/chargers/').then(r=>r.json()).then(list=>{
+    if(!Array.isArray(list))return;
+    STATE.chargers=list;
+    const sel=document.getElementById('charger-select');
+    const cur=sel.value;
+    sel.innerHTML=list.map(c=>{
+      const online=(c.status||'').toLowerCase()!=='offline';
+      const dot=online?'●':'○';
+      return `<option value="${escapeHtml(c.id)}">${dot} ${escapeHtml(c.id)} — ${escapeHtml(c.status||'?')}</option>`;
+    }).join('');
+    if(list.find(c=>c.id===cur))sel.value=cur;
+    updateChargerStatus();
+  }).catch(()=>{});
+},30000);
+</script>
+</body>
+</html>

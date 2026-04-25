@@ -1,7 +1,17 @@
 # core/ocpp_server.py
+"""
+Serveur WebSocket OCPP 1.6.
+
+Améliorations inspirées de SteVe (steve-community/steve) :
+  STEVE-1  Validation chargeBoxId par regex (OcppWebSocketHandshakeHandler)
+  STEVE-2  Duplicate CALL messageId detection par session (IncomingMessageIdStore)
+  STEVE-3  Heartbeat mis à jour sur Pong WebSocket ET sur OCPP Heartbeat
+  STEVE-4  Logging structuré des connexions/déconnexions (WebSocketLogger)
+"""
 import asyncio
 import json
 import base64
+import re
 from typing import Optional
 from datetime import datetime, timezone
 import websockets
@@ -10,15 +20,90 @@ from websockets.server import WebSocketServerProtocol
 from config import settings
 from core.charge_point import ChargePoint
 from core.logging import log
+from core import raw_logger
+from sqlalchemy import update as sa_update
 from db.database import AsyncSessionLocal
-from db.models import Charger
+from db.models import Charger, ChargerStatus
+
+
+# ── STEVE-1 : Validation du chargeBoxId par regex ──────────────────────────
+# SteVe utilise un pattern configurable (ChargeBoxIdValidator).
+# Par défaut : alphanumérique + tiret, underscore, point.
+# Rejette les caractères dangereux : /, \, .., ?, #, etc.
+_CHARGEBOX_ID_PATTERN = re.compile(
+    r'^[a-zA-Z0-9_\-\.]{1,64}$'
+)
+
+def _is_valid_chargebox_id(chargebox_id: str) -> bool:
+    """Vérifie que le chargeBoxId est valide (même règle que SteVe)."""
+    if not chargebox_id:
+        return False
+    return bool(_CHARGEBOX_ID_PATTERN.match(chargebox_id))
+
+
+# ── Normalisation des subprotocoles ────────────────────────────────────────
+_OCPP16_VARIANTS = {"ocpp1.6", "ocpp1.6.0", "ocpp16", "ocpp1.6j"}
+
+def _normalize_subprotocol(requested: Optional[str]) -> Optional[str]:
+    if not requested:
+        return None
+    normalized = requested.lower().replace(" ", "")
+    return "ocpp1.6" if normalized in _OCPP16_VARIANTS else None
+
+
+# ── STEVE-2 : Tracking des messageId entrants ──────────────────────────────
+class IncomingMessageIdStore:
+    """
+    Détecte les CALL messageId dupliqués par session WebSocket.
+
+    Inspiré de SteVe's IncomingMessageIdStore (IncomingMessageIdStore.java, fév. 2026).
+    SteVe utilise murmur3 + LongOpenHashSet pour l'efficacité mémoire.
+    En Python, on utilise un set() par session — suffisant pour notre échelle résidentielle.
+
+    Comportement :
+    - Si le même messageId arrive deux fois dans la même session → log + False
+    - La borne doit générer des messageId uniques par session (UUID ou timestamp)
+    - SteVe ferme la session sur doublon ; nous loggons seulement (moins agressif)
+    """
+    def __init__(self, max_ids_per_session: int = 10_000):
+        self._sessions: dict[str, set] = {}
+        self._max = max_ids_per_session
+
+    def add_session(self, session_id: str) -> None:
+        self._sessions[session_id] = set()
+
+    def remove_session(self, session_id: str) -> None:
+        self._sessions.pop(session_id, None)
+
+    def register_call_id(self, session_id: str, message_id: str) -> bool:
+        """
+        Retourne True si le messageId est nouveau (première occurrence).
+        Retourne False si c'est un doublon.
+        """
+        s = self._sessions.get(session_id)
+        if s is None:
+            return True  # Session inconnue → tolérer
+        if not message_id:
+            return True  # messageId vide → géré ailleurs
+        if message_id in s:
+            return False  # Doublon
+        if len(s) >= self._max:
+            # Éviter la croissance infinie — réinitialiser (comme SteVe qui ferme la session)
+            log.warning("IncomingMessageIdStore — limite atteinte, reset",
+                        session_id=session_id, limit=self._max)
+            s.clear()
+        s.add(message_id)
+        return True
 
 
 class OCPPServer:
 
     def __init__(self):
         self._charge_points: dict[str, ChargePoint] = {}
+        self._connect_locks: dict[str, asyncio.Lock] = {}
         self._dashboard_clients: set = set()
+        # STEVE-2 : tracking des messageId
+        self._msg_id_store = IncomingMessageIdStore()
 
     @property
     def connected_chargers(self) -> list[str]:
@@ -27,10 +112,21 @@ class OCPPServer:
     def get_charger(self, charge_point_id: str) -> Optional[ChargePoint]:
         return self._charge_points.get(charge_point_id)
 
-    # ── Basic Auth ────────────────────────────────────────
+    def _get_connect_lock(self, charge_point_id: str) -> asyncio.Lock:
+        if charge_point_id not in self._connect_locks:
+            self._connect_locks[charge_point_id] = asyncio.Lock()
+        return self._connect_locks[charge_point_id]
+
+    # ── Basic Auth ────────────────────────────────────────────────────────────
 
     def _parse_basic_auth(self, websocket) -> tuple[Optional[str], Optional[str]]:
-        headers = dict(websocket.request_headers)
+        try:
+            headers = dict(websocket.request_headers)
+        except AttributeError:
+            try:
+                headers = dict(websocket.request.headers)
+            except Exception:
+                return None, None
         auth = headers.get("Authorization") or headers.get("authorization")
         if not auth or not auth.startswith("Basic "):
             return None, None
@@ -45,58 +141,125 @@ class OCPPServer:
         async with AsyncSessionLocal() as db:
             charger = await db.get(Charger, charge_point_id)
             if charger is None:
-                return True
+                return True  # Auto-enregistrement permis
             if not charger.is_enabled:
                 log.warning("Borne désactivée", id=charge_point_id)
                 return False
             if charger.auth_password:
                 if password != charger.auth_password:
-                    log.warning("Mauvais mot de passe", id=charge_point_id)
+                    log.warning("Mot de passe incorrect", id=charge_point_id)
                     return False
             return True
 
-    # ── Connexions OCPP ───────────────────────────────────
+    # ── process_request (validation pendant le handshake HTTP) ───────────────
+
+    async def process_request(self, path: str, request_headers) -> Optional[tuple]:
+        """
+        Hook appelé pendant le HTTP upgrade — avant l'établissement du WebSocket.
+        Équivalent de OcppWebSocketHandshakeHandler.doHandshake() dans SteVe.
+        """
+        charge_point_id = path.strip("/").split("/")[-1]
+
+        # STEVE-1 : Validation regex du chargeBoxId
+        if not _is_valid_chargebox_id(charge_point_id):
+            log.warning("process_request — chargeBoxId invalide ou absent", path=path)
+            return (400, [("Content-Type", "text/plain")],
+                    b"ChargeBoxId invalide ou manquant (attendu: alphanum, tiret, underscore, point)\n")
+
+        return None  # Accepter → continuer vers on_connect()
+
+    # ── Connexions OCPP ───────────────────────────────────────────────────────
 
     async def on_connect(self, websocket: WebSocketServerProtocol, path: str) -> None:
         charge_point_id = path.strip("/").split("/")[-1]
 
-        if not charge_point_id:
-            await websocket.close(1008, "charge_point_id manquant")
+        # Double-check (process_request peut avoir été ignoré selon la version de websockets)
+        if not _is_valid_chargebox_id(charge_point_id):
+            log.warning("Connexion rejetée — chargeBoxId invalide", path=path)
+            await websocket.close(3001, "ChargeBoxId invalide")
             return
 
-        if websocket.subprotocol not in settings.ocpp.supported_protocols:
-            log.warning("Protocole non supporté", id=charge_point_id,
+        # Validation subprotocol
+        negotiated = _normalize_subprotocol(websocket.subprotocol)
+        if websocket.subprotocol and not negotiated:
+            log.warning("Subprotocol non supporté", id=charge_point_id,
                         requested=websocket.subprotocol)
-            await websocket.close(1002, "Protocole non supporté")
+            await websocket.close(3001, "Subprotocol OCPP 1.6 requis")
             return
+        if not websocket.subprotocol:
+            log.warning("Borne sans subprotocol — connexion tolérée", id=charge_point_id)
 
+        # Authentification
         _, password = self._parse_basic_auth(websocket)
         if not await self._authenticate(charge_point_id, password):
-            await websocket.close(4001, "Non autorisé")
+            await websocket.close(3001, "Non autorisé")
             return
 
-        if charge_point_id in self._charge_points:
-            log.info("Reconnexion", id=charge_point_id)
-            await self._charge_points[charge_point_id].on_disconnect()
+        # IP address
+        try:
+            remote_addr = websocket.remote_address
+            ip = remote_addr[0] if isinstance(remote_addr, tuple) else str(remote_addr)
+        except Exception:
+            ip = "unknown"
 
-        cp = ChargePoint(charge_point_id, websocket, server=self)
-        self._charge_points[charge_point_id] = cp
+        # STEVE-4 : Log structuré de connexion
+        session_id = id(websocket)
+        log.info("Borne connectée",
+                 id=charge_point_id, ip=ip,
+                 protocol=websocket.subprotocol or "none",
+                 session_id=session_id)
 
-        log.info("Borne connectée", id=charge_point_id,
-                 ip=websocket.remote_address, protocol=websocket.subprotocol)
+        # STEVE-2 : Enregistrer la session pour le tracking des messageIds
+        self._msg_id_store.add_session(str(session_id))
+
+        # Phase 0.2 : logging OCPP brut par borne (CALL/CALLRESULT/CALLERROR → fichier dédié)
+        raw_logger.attach(charge_point_id)
+
+        # Lock par borne pour sérialiser les reconnexions rapides
+        lock = self._get_connect_lock(charge_point_id)
+        async with lock:
+            if charge_point_id in self._charge_points:
+                old_cp = self._charge_points[charge_point_id]
+                log.info("Reconnexion — déconnexion ancienne instance", id=charge_point_id)
+                await old_cp.on_disconnect()
+                await asyncio.sleep(0.1)
+
+            cp = ChargePoint(charge_point_id, websocket, server=self, ip_address=ip)
+            self._charge_points[charge_point_id] = cp
 
         try:
             await cp.start()
-        except websockets.exceptions.ConnectionClosed as e:
-            log.info("Connexion fermée", id=charge_point_id, code=e.code)
+        except websockets.exceptions.ConnectionClosedOK:
+            log.info("Connexion fermée proprement", id=charge_point_id)
+        except websockets.exceptions.ConnectionClosedError as e:
+            log.info("Connexion fermée avec erreur",
+                     id=charge_point_id, code=e.code, reason=e.reason)
         except Exception as e:
-            log.error("Erreur", id=charge_point_id, error=str(e))
+            log.error("Erreur inattendue", id=charge_point_id, error=str(e))
         finally:
+            # STEVE-4 : Log structuré de déconnexion
+            log.info("Borne déconnectée — retrait du registre", id=charge_point_id)
             await cp.on_disconnect()
             self._charge_points.pop(charge_point_id, None)
-            log.info("Borne retirée du registre", id=charge_point_id)
+            self._connect_locks.pop(charge_point_id, None)
+            # STEVE-2 : Nettoyer le tracking messageId
+            self._msg_id_store.remove_session(str(session_id))
+            # Phase 0.2 : fermer le logger OCPP brut
+            raw_logger.detach(charge_point_id)
 
-    # ── Broadcast dashboard ───────────────────────────────
+    def check_duplicate_message_id(self, websocket, message_id: str) -> bool:
+        """
+        Vérifie qu'un messageId CALL entrant n'est pas un doublon.
+        Retourne False si doublon (le caller doit ignorer le message).
+        """
+        session_id = str(id(websocket))
+        is_new = self._msg_id_store.register_call_id(session_id, message_id)
+        if not is_new:
+            log.warning("Doublon messageId CALL détecté — ignoré",
+                        session_id=session_id, message_id=message_id)
+        return is_new
+
+    # ── Broadcast dashboard ───────────────────────────────────────────────────
 
     async def broadcast_status(self, charger_id: str, connector_id: int, status) -> None:
         await self._broadcast({
@@ -108,16 +271,16 @@ class OCPPServer:
 
     async def broadcast_meter_value(self, charger_id: str, connector_id: int, values: dict) -> None:
         await self._broadcast({
-            "type":           "meter_value",
-            "charger_id":     charger_id,
-            "connector_id":   connector_id,
-            "power_w":        values.get("power_w"),
-            "energy_wh":      values.get("energy_wh"),
+            "type":              "meter_value",
+            "charger_id":        charger_id,
+            "connector_id":      connector_id,
+            "power_w":           values.get("power_w"),
+            "energy_wh":         values.get("energy_wh"),
             "session_energy_wh": values.get("session_energy_wh"),
-            "current_a":      values.get("current_a"),
-            "voltage_v":      values.get("voltage_v"),
-            "soc_percent":    values.get("soc_percent"),
-            "timestamp":      datetime.now(timezone.utc).isoformat(),
+            "current_a":         values.get("current_a"),
+            "voltage_v":         values.get("voltage_v"),
+            "soc_percent":       values.get("soc_percent"),
+            "timestamp":         datetime.now(timezone.utc).isoformat(),
         })
 
     async def broadcast_heartbeat(self, charger_id: str, timestamp: str) -> None:
@@ -150,14 +313,21 @@ class OCPPServer:
             "config":     config,
         })
 
+    async def broadcast_disconnect(self, charger_id: str) -> None:
+        await self._broadcast({
+            "type":         "status_update",
+            "charger_id":   charger_id,
+            "connector_id": 0,
+            "status":       "Offline",
+        })
+
     async def _broadcast(self, data: dict) -> None:
         if not self._dashboard_clients:
             return
-        message = json.dumps(data)
+        message = json.dumps(data, default=str)
         dead = set()
         for client in self._dashboard_clients:
             try:
-                # FastAPI WebSocket utilise send_text(), pas send()
                 await client.send_text(message)
             except Exception:
                 dead.add(client)
@@ -169,20 +339,106 @@ class OCPPServer:
     def unregister_dashboard_client(self, ws) -> None:
         self._dashboard_clients.discard(ws)
 
-    # ── Démarrage ─────────────────────────────────────────
+    # ── Démarrage ─────────────────────────────────────────────────────────────
+
+    async def _mark_all_offline_on_startup(self) -> None:
+        """
+        Au démarrage du serveur, aucune borne n'est connectée.
+        On remet toutes les bornes à Offline en DB pour éviter
+        l'incohérence badge 'Available' + conn-bar rouge après
+        un redémarrage sans déconnexion propre (SIGKILL, crash, etc.).
+        """
+        try:
+            async with AsyncSessionLocal() as db:
+                await db.execute(sa_update(Charger).values(status=ChargerStatus.OFFLINE))
+                await db.commit()
+            log.info("Démarrage — toutes les bornes marquées Offline en DB")
+        except Exception as e:
+            log.warning("_mark_all_offline_on_startup échoué", error=str(e))
+
+    async def _config_drift_loop(self) -> None:
+        """Sprint 29 Volet D — boucle 5 min qui re-capture les watched keys
+        pour chaque borne connectée et détecte les drifts cloud fabricant.
+
+        _capture_config_snapshot fait l'auto-heal via ChangeConfiguration
+        si observed != expected. Cadence 300s = compromis bruit/réactivité.
+        """
+        while True:
+            try:
+                await asyncio.sleep(300)
+                cps = list(self._charge_points.values())
+                for cp in cps:
+                    try:
+                        await cp._capture_config_snapshot(watched_only=True)
+                    except Exception as e:
+                        log.warning("_config_drift_loop capture failed",
+                                    id=getattr(cp, "id", None), error=str(e))
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                log.warning("_config_drift_loop erreur", error=str(e))
+                await asyncio.sleep(300)
+
+    async def _reservation_expiry_loop(self) -> None:
+        """Sprint 28 A7 — boucle de fond qui marque EXPIRED les réservations
+        dont expiry_date est passé. Cadence 60s (suffisant vs granularité minute
+        typique des expiry OCPP).
+        """
+        from db.database import expire_stale_reservations
+        while True:
+            try:
+                await asyncio.sleep(60)
+                await expire_stale_reservations()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                log.warning("_reservation_expiry_loop erreur", error=str(e))
+                await asyncio.sleep(60)
 
     async def start(self) -> None:
+        # FIX: Remettre toutes les bornes à Offline au démarrage
+        # (évite les badges 'Available' orphelins après un crash/redémarrage)
+        await self._mark_all_offline_on_startup()
+
+        # A10 : purger les snapshots expirés depuis > 90j (audit trail court)
+        try:
+            from db.database import purge_expired_snapshots
+            await purge_expired_snapshots(days=90)
+        except Exception as e:
+            log.warning("purge_expired_snapshots échoué au boot", error=str(e))
+
+        # Sprint 28 A7 : expirer les réservations périmées au boot + boucle 60s
+        try:
+            from db.database import expire_stale_reservations
+            await expire_stale_reservations()
+        except Exception as e:
+            log.warning("expire_stale_reservations échoué au boot", error=str(e))
+        asyncio.create_task(self._reservation_expiry_loop())
+
+        # Sprint 29 Volet D : boucle 5 min de détection drift config
+        asyncio.create_task(self._config_drift_loop())
+
+        # Sprint 32 Point 2 : capture activity log unifiée (logger `ocpp` MobilityHouse)
+        try:
+            from core.activity_logger import init_capture, start_worker
+            init_capture()
+            await start_worker()
+            log.info("[S32-activity] Activity log capture initialisée")
+        except Exception as e:
+            log.warning("[S32-activity] init_capture/start_worker échoué", error=str(e))
+
         log.info("Démarrage OCPP WebSocket",
                  host=settings.ocpp.host, port=settings.ocpp.port)
-
         async with websockets.serve(
             self.on_connect,
             settings.ocpp.host,
             settings.ocpp.port,
-            subprotocols=settings.ocpp.supported_protocols,
+            subprotocols=list(_OCPP16_VARIANTS),
             ping_interval=settings.ocpp.ping_interval,
             ping_timeout=settings.ocpp.ping_timeout,
+            max_size=256 * 1024,
+            process_request=self.process_request,
         ):
             log.info("Serveur OCPP prêt",
-                     url=f"ws://{settings.ocpp.host}:{settings.ocpp.port}/ocpp/[ID_BORNE]")
+                     url=f"ws://{settings.ocpp.host}:{settings.ocpp.port}{settings.ocpp.ws_path}/[ID]")
             await asyncio.Future()

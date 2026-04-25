@@ -1,0 +1,174 @@
+"""Tests RemoteCommands (§5.1 ChangeAvailability, §5.18 UnlockConnector, §5.17 TriggerMessage)."""
+from __future__ import annotations
+
+import asyncio
+from datetime import datetime, timedelta, timezone
+
+from certification import catalog
+from certification.catalog import TestCase, TestResult
+from certification.helpers import TestContext
+
+
+async def _run_change_availability(ctx: TestContext) -> TestResult:
+    cp = ctx.get_cp()
+    if cp is None:
+        return TestResult(status="failed", message="Borne hors ligne")
+    # Inoperative puis Operative pour éviter de laisser une borne bloquée.
+    # Le ChargePoint expose set_available(connector_id) / set_unavailable(connector_id).
+    try:
+        status_ino = await cp.set_unavailable(connector_id=0)
+    except Exception as e:
+        return TestResult(
+            status="failed",
+            message=f"ChangeAvailability Inoperative a levé une exception : {e}",
+        )
+    await asyncio.sleep(2)
+    try:
+        status_op = await cp.set_available(connector_id=0)
+    except Exception as e:
+        return TestResult(
+            status="failed",
+            message=f"ChangeAvailability Operative a levé une exception : {e}",
+            recommendation="Borne possiblement coincée en Inoperative — vérifier manuellement.",
+        )
+    details = {
+        "inoperative_status": str(status_ino),
+        "operative_status": str(status_op),
+    }
+    # set_unavailable/set_available retournent bool (True = Accepted|Scheduled)
+    # ou potentiellement string OCPP selon implémentation — accepter les deux.
+    def _ok(v) -> bool:
+        if isinstance(v, bool):
+            return v
+        return str(v).lower() in {"accepted", "scheduled", "true"}
+    ok_ino = _ok(status_ino)
+    ok_op = _ok(status_op)
+    if not ok_ino or not ok_op:
+        return TestResult(
+            status="failed",
+            message=f"ChangeAvailability réponse inattendue : ino={status_ino}, op={status_op}",
+            details=details,
+        )
+    return TestResult(
+        status="passed",
+        message="ChangeAvailability Inoperative → Operative OK",
+        details=details,
+    )
+
+
+catalog.register(
+    TestCase(
+        name="rem.change_availability",
+        category="Remote",
+        title="ChangeAvailability connector 0 (§5.1)",
+        description="Bascule la borne en Inoperative puis Operative (connecteur 0 = toute la borne).",
+        run=_run_change_availability,
+        estimated_seconds=10,
+        suites={"quick", "standard", "full"},
+        ocpp_ref="§5.1 ChangeAvailability",
+    )
+)
+
+
+# ─────────────────────────── rem.unlock_connector ───────────────────────────
+
+
+async def _run_unlock_connector(ctx: TestContext) -> TestResult:
+    cp = ctx.get_cp()
+    if cp is None:
+        return TestResult(status="failed", message="Borne hors ligne")
+    try:
+        status = await cp.unlock_connector(connector_id=1)
+    except Exception as e:
+        return TestResult(
+            status="failed",
+            message=f"UnlockConnector a levé une exception : {e}",
+        )
+    details = {"status": str(status)}
+    # Accepted, Unlocked, UnlockFailed, NotSupported — tout retour OCPP valide = passed.
+    valid = {"unlocked", "accepted", "unlockfailed", "notsupported"}
+    if str(status).lower() in valid:
+        return TestResult(
+            status="passed",
+            message=f"UnlockConnector a répondu : {status}",
+            details=details,
+        )
+    return TestResult(
+        status="failed",
+        message=f"UnlockConnector réponse inattendue : {status}",
+        details=details,
+        recommendation="Valeurs OCPP 1.6J §5.18 : Unlocked | UnlockFailed | NotSupported.",
+    )
+
+
+catalog.register(
+    TestCase(
+        name="rem.unlock_connector",
+        category="Remote",
+        title="UnlockConnector (§5.18)",
+        description="Demande le déverrouillage du connecteur 1 et vérifie la réponse.",
+        run=_run_unlock_connector,
+        estimated_seconds=6,
+        suites={"full"},
+        ocpp_ref="§5.18 UnlockConnector",
+    )
+)
+
+
+# ─────────────────────────── rem.trigger_heartbeat ───────────────────────────
+
+
+async def _run_trigger_heartbeat(ctx: TestContext) -> TestResult:
+    cp = ctx.get_cp()
+    if cp is None:
+        return TestResult(status="failed", message="Borne hors ligne")
+    if not ctx.supports("RemoteTrigger"):
+        return TestResult(
+            status="skipped",
+            message="Profil RemoteTrigger non supporté",
+        )
+    try:
+        status = await cp.trigger_message("Heartbeat")
+    except Exception as e:
+        return TestResult(
+            status="failed",
+            message=f"TriggerMessage a levé une exception : {e}",
+        )
+    details = {"trigger_status": str(status)}
+    if str(status).lower() not in {"accepted"}:
+        return TestResult(
+            status="failed",
+            message=f"TriggerMessage refusé : {status}",
+            details=details,
+        )
+    # Attend le Heartbeat consécutif
+    since = datetime.now(timezone.utc) - timedelta(seconds=3)
+    row = await ctx.wait_for_activity(action="Heartbeat", direction="in", since=since, timeout_s=15, poll_s=0.5)
+    details["heartbeat_received"] = row is not None
+    if row is None:
+        return TestResult(
+            status="failed",
+            message="TriggerMessage accepté mais pas de Heartbeat dans les 15s",
+            details=details,
+            recommendation="Vérifier §5.17 TriggerMessage : la borne doit envoyer le msg dans la foulée.",
+        )
+    return TestResult(
+        status="passed",
+        message="TriggerMessage → Heartbeat observé",
+        details=details,
+    )
+
+
+catalog.register(
+    TestCase(
+        name="rem.trigger_heartbeat",
+        category="Remote",
+        title="TriggerMessage Heartbeat (§5.17)",
+        description="Déclenche un Heartbeat via TriggerMessage et vérifie la réception.",
+        run=_run_trigger_heartbeat,
+        requires_profile="RemoteTrigger",
+        estimated_seconds=10,
+        suites={"quick", "standard", "full"},
+        ocpp_ref="§5.17 TriggerMessage",
+    )
+)

@@ -11,37 +11,45 @@ class OCPPSettings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 9000
     ws_path: str = "/ocpp"
+
+    # BUG CORRIGÉ : "ocpp2.0.1" RETIRÉ — ChargePoint est OCPP 1.6 uniquement.
+    # Si on accepte ocpp2.0.1 dans le handshake mais qu'on répond avec des messages
+    # OCPP 1.6, la borne reçoit des frames invalides et déconnecte.
+    #
+    # Les variantes OCPP 1.6 (ocpp1.6.0, ocpp16, etc.) sont gérées dans
+    # ocpp_server.py via _OCPP16_VARIANTS — pas besoin de les lister ici.
+    supported_protocols: list[str] = ["ocpp1.6"]
+
     # ping_interval=None : désactive les WebSocket pings côté serveur.
-    # La TechnoVE (et beaucoup de bornes résidentielles) ne répond pas aux WS pings
-    # pendant le traitement de commandes, causant des déconnexions 1011 prématurées.
+    # TechnoVE et Grizzl-E ne répondent pas aux WS pings pendant le traitement
+    # de commandes, ce qui déclenche des déconnexions 1011 prématurées.
     # Le keepalive est assuré par OCPP Heartbeat (interval=30s, côté borne).
     ping_interval: Optional[int] = None
     ping_timeout:  int = 60
-    supported_protocols: list[str] = ["ocpp1.6", "ocpp2.0.1"]
 
 
 class APISettings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
-    secret_key: str = Field(..., min_length=32)   # obligatoire
+    secret_key: str = Field(..., min_length=32)
     access_token_expire_minutes: int = 60
     allowed_origins: list[str] = ["http://localhost:3000"]
 
 
 class DatabaseSettings(BaseSettings):
     url: str = f"sqlite+aiosqlite:///{BASE_DIR}/data/ocpp.db"
-    echo: bool = False               # True = log toutes les queries SQL
+    echo: bool = False
 
 
 class OBD2Settings(BaseSettings):
     enabled: bool = False
     server_url: str = "http://localhost:8080"
-    poll_interval: int = 5           # secondes
+    poll_interval: int = 5
     api_key: str = ""
 
 
 class LogSettings(BaseSettings):
-    level: str = "INFO"              # DEBUG | INFO | WARNING | ERROR
+    level: str = "INFO"
     file: Path = BASE_DIR / "logs" / "ocpp.log"
     rotation: str = "10 MB"
     retention: str = "30 days"
@@ -51,13 +59,13 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        env_nested_delimiter="__",   # ex: OCPP__PORT=9000
+        env_nested_delimiter="__",
         case_sensitive=False,
     )
 
     app_name: str = "OCPP Server"
-    environment: str = "development"  # development | production
-    timezone: str = "America/Toronto"   # UTC-4/UTC-5 selon DST
+    environment: str = "development"
+    timezone: str = "America/Toronto"
 
     ocpp: OCPPSettings = OCPPSettings()
     api: APISettings = APISettings(secret_key="changeme-32chars-minimum-secret!")
@@ -66,5 +74,4 @@ class Settings(BaseSettings):
     log: LogSettings = LogSettings()
 
 
-# Singleton — importé partout dans le projet
 settings = Settings()

@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OCPP Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+
+{% include "partials/_header.html" %}
+
+<main>
+  {% include "partials/_kpis.html" %}
+  {% include "partials/_chargers_grid.html" %}
+</main>
+
+{% include "partials/_modals.html" %}
+
+<script src="/static/js/ocpp_config_db.js"></script>
+<script src="/static/js/dashboard.js"></script>
+</body>
+</html>

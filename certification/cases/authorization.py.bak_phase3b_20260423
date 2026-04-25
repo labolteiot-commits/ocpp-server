@@ -1,0 +1,276 @@
+"""Tests Authorize / LocalAuthList (§4.1, §6.9, §6.11).
+
+Note OCPP : le message Authorize est CP→CS (borne → serveur). On ne peut
+pas l'initier depuis le serveur. Pour certifier le comportement de la
+borne, on valide la logique serveur (whitelist) qui serait exécutée si
+la borne envoyait Authorize, en appelant directement ``_authorize_id_tag``
+(même code path que le handler ``on_authorize``).
+
+Pour une validation wire complète sur borne réelle, le technicien doit
+passer une carte RFID ; le test ``auth.authorize_swipe`` (suite ``full``)
+attend alors une entrée dans l'activity log.
+"""
+from __future__ import annotations
+
+import asyncio
+from datetime import datetime, timedelta, timezone
+
+from certification import catalog
+from certification.catalog import TestCase, TestResult
+from certification.helpers import TestContext
+
+
+CERTIF_TAG_VALID = "CERTIF_VALID"
+CERTIF_TAG_REJECTED = "CERTIF_BLOCKED"
+
+
+async def _server_side_authorize(cp, id_tag: str) -> str | None:
+    """Appelle ``cp._authorize_id_tag`` (helper StateMixin Sprint 29).
+
+    Retourne la string de status (``"Accepted"``/``"Blocked"``/``"Invalid"``/
+    ``"Expired"``) ou None si le helper n'est pas disponible.
+    """
+    fn = getattr(cp, "_authorize_id_tag", None)
+    if not callable(fn):
+        return None
+    info = await fn(id_tag)
+    status = info.get("status") if isinstance(info, dict) else None
+    if status is None:
+        return None
+    # Peut être un enum AuthorizationStatus ou déjà une string.
+    val = getattr(status, "value", None)
+    return val if val is not None else str(status)
+
+
+# ─────────────────────────── auth.authorize_valid ───────────────────────────
+
+
+async def _run_authorize_valid(ctx: TestContext) -> TestResult:
+    await ctx.ensure_tag(CERTIF_TAG_VALID, active=True, note="certif valid")
+    cp = ctx.get_cp()
+    if cp is None:
+        return TestResult(status="failed", message="Borne hors ligne")
+    try:
+        status = await _server_side_authorize(cp, CERTIF_TAG_VALID)
+    except Exception as e:
+        return TestResult(
+            status="failed",
+            message=f"_authorize_id_tag a levé une exception : {e}",
+            recommendation="Vérifier que StateMixin._authorize_id_tag est disponible.",
+        )
+    if status is None:
+        return TestResult(
+            status="failed",
+            message="Helper serveur _authorize_id_tag indisponible",
+            recommendation="Mettre à jour le serveur OCPP (Sprint 29 Volet A requis).",
+        )
+    details = {
+        "tag": CERTIF_TAG_VALID,
+        "expected": "Accepted",
+        "server_status": status,
+    }
+    if str(status).lower() == "accepted":
+        return TestResult(
+            status="passed",
+            message=f"Serveur autoriserait {CERTIF_TAG_VALID} → Accepted",
+            details=details,
+        )
+    return TestResult(
+        status="failed",
+        message=f"Status serveur inattendu : {status} (attendu Accepted)",
+        details=details,
+        recommendation="Vérifier que la whitelist serveur contient bien le tag actif.",
+    )
+
+
+catalog.register(
+    TestCase(
+        name="auth.authorize_valid",
+        category="Authorization",
+        title="Authorize tag valide (§4.1 — logique serveur)",
+        description=(
+            f"Ajoute {CERTIF_TAG_VALID} actif dans la whitelist et vérifie que "
+            "la logique d'autorisation serveur retourne Accepted."
+        ),
+        run=_run_authorize_valid,
+        estimated_seconds=5,
+        suites={"standard", "full"},
+        ocpp_ref="§4.1 Authorize.conf",
+    )
+)
+
+
+# ─────────────────────────── auth.authorize_rejected ───────────────────────────
+
+
+async def _run_authorize_rejected(ctx: TestContext) -> TestResult:
+    await ctx.ensure_tag(CERTIF_TAG_REJECTED, active=False, note="certif blocked")
+    cp = ctx.get_cp()
+    if cp is None:
+        return TestResult(status="failed", message="Borne hors ligne")
+    try:
+        status = await _server_side_authorize(cp, CERTIF_TAG_REJECTED)
+    except Exception as e:
+        return TestResult(
+            status="failed",
+            message=f"_authorize_id_tag a levé une exception : {e}",
+        )
+    if status is None:
+        return TestResult(
+            status="failed",
+            message="Helper serveur _authorize_id_tag indisponible",
+        )
+    details = {
+        "tag": CERTIF_TAG_REJECTED,
+        "expected": "Blocked or Invalid",
+        "server_status": status,
+    }
+    if str(status).lower() in {"blocked", "invalid", "expired"}:
+        return TestResult(
+            status="passed",
+            message=f"Serveur refuserait {CERTIF_TAG_REJECTED} → {status}",
+            details=details,
+        )
+    return TestResult(
+        status="failed",
+        message=(
+            f"Tag inactif mais serveur retournerait {status} "
+            "— devrait être Blocked/Invalid"
+        ),
+        details=details,
+        recommendation=(
+            "Vérifier que la whitelist serveur bloque les tags inactifs (§4.1 IdTagInfo)."
+        ),
+    )
+
+
+catalog.register(
+    TestCase(
+        name="auth.authorize_rejected",
+        category="Authorization",
+        title="Authorize tag bloqué (§4.1 — logique serveur)",
+        description=(
+            f"Vérifie qu'un tag inactif ({CERTIF_TAG_REJECTED}) est refusé par "
+            "la logique d'autorisation serveur (Blocked/Invalid/Expired)."
+        ),
+        run=_run_authorize_rejected,
+        estimated_seconds=5,
+        suites={"standard", "full"},
+        ocpp_ref="§4.1 Authorize.conf",
+    )
+)
+
+
+# ─────────────────────────── auth.local_list_sync ───────────────────────────
+
+
+async def _run_local_list_sync(ctx: TestContext) -> TestResult:
+    if not ctx.supports("LocalAuthListManagement"):
+        return TestResult(
+            status="skipped",
+            message="Profil LocalAuthListManagement non supporté par la borne",
+        )
+    cp = ctx.get_cp()
+    if cp is None:
+        return TestResult(status="failed", message="Borne hors ligne")
+    try:
+        version = await cp.get_local_list_version()
+    except Exception as e:
+        return TestResult(
+            status="failed",
+            message=f"GetLocalListVersion a levé une exception : {e}",
+            recommendation="Vérifier l'implémentation §6.11 côté borne.",
+        )
+    details = {"current_version": version}
+    if version is None:
+        return TestResult(
+            status="failed",
+            message="GetLocalListVersion n'a retourné aucune version",
+            details=details,
+            recommendation="Le profil LocalAuthListManagement déclaré mais endpoint KO.",
+        )
+    return TestResult(
+        status="passed",
+        message=f"GetLocalListVersion a retourné version={version}",
+        details=details,
+    )
+
+
+catalog.register(
+    TestCase(
+        name="auth.local_list_sync",
+        category="Authorization",
+        title="GetLocalListVersion (§6.11)",
+        description="Vérifie que la borne répond à GetLocalListVersion (cache local).",
+        run=_run_local_list_sync,
+        requires_profile="LocalAuthListManagement",
+        estimated_seconds=8,
+        suites={"full"},
+        ocpp_ref="§6.11 GetLocalListVersion",
+    )
+)
+
+
+# ─────────────────────────── auth.authorize_swipe (full uniquement) ──────────
+
+
+async def _run_authorize_swipe(ctx: TestContext) -> TestResult:
+    """Validation wire : technicien passe une carte, on observe l'activity log."""
+    await ctx.ensure_tag(CERTIF_TAG_VALID, active=True, note="certif valid swipe")
+    since = datetime.now(timezone.utc) - timedelta(seconds=2)
+    resp = await ctx.prompt_technician(
+        message=(
+            f"Passer une carte RFID (tag configuré : {CERTIF_TAG_VALID}). "
+            "Appuyer sur 'done' dès que la carte est présentée."
+        ),
+        timeout_s=120,
+        buttons=["done", "skip"],
+    )
+    if resp != "done":
+        return TestResult(
+            status="skipped",
+            message=f"Technicien a répondu {resp!r} — test non exécuté",
+        )
+    # Observer l'activity log pour un Authorize entrant (direction=in).
+    row = await ctx.wait_for_activity(
+        action="Authorize",
+        direction="in",
+        since=since,
+        timeout_s=15,
+    )
+    if row is None:
+        return TestResult(
+            status="failed",
+            message="Aucun Authorize reçu après le swipe",
+            recommendation=(
+                "Vérifier que la borne est configurée en mode 'RFID' et "
+                "envoie bien Authorize au central system."
+            ),
+        )
+    details = {
+        "activity_id": row.id,
+        "payload": row.payload,
+        "unique_id": row.unique_id,
+    }
+    return TestResult(
+        status="passed",
+        message="Authorize entrant capté dans l'activity log après swipe",
+        details=details,
+    )
+
+
+catalog.register(
+    TestCase(
+        name="auth.authorize_swipe",
+        category="Authorization",
+        title="Authorize RFID réel (§4.1 — swipe)",
+        description=(
+            "Le technicien passe une carte RFID ; le serveur attend un "
+            "message Authorize entrant dans l'activity log."
+        ),
+        run=_run_authorize_swipe,
+        estimated_seconds=30,
+        suites={"full"},
+        ocpp_ref="§4.1 Authorize.req",
+    )
+)

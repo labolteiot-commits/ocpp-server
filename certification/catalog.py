@@ -1,0 +1,205 @@
+"""Catalogue des tests + suites prédéfinies.
+
+Chaque ``TestCase`` décrit son nom, sa catégorie, sa description affichée
+au technicien, ses dépendances (profils OCPP requis, véhicule branché,
+prompts nécessaires) et son callable ``run(ctx)`` qui retourne un
+``TestResult``.
+
+Les suites ``quick`` / ``standard`` / ``full`` sont des listes explicites
+de noms de tests. ``custom`` permet au client de fournir la liste.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Awaitable, Callable, List, Optional, Set
+
+
+RunFn = Callable[[Any], Awaitable["TestResult"]]
+
+
+@dataclass
+class TestResult:
+    status: str  # "passed" | "failed" | "skipped"
+    message: str = ""
+    details: dict = field(default_factory=dict)
+    recommendation: str = ""
+
+
+@dataclass
+class TestCase:
+    name: str                       # ex: "handshake.boot_notification"
+    category: str                   # ex: "Handshake"
+    title: str                      # ex: "BootNotification valide (§4.2)"
+    description: str                # texte affiché au technicien
+    run: RunFn
+    requires_profile: Optional[str] = None   # ex: "SmartCharging"
+    requires_vehicle: bool = False           # prompt plug du véhicule
+    requires_power_cycle: bool = False       # prompt coupe alim
+    estimated_seconds: int = 10
+    suites: Set[str] = field(default_factory=lambda: {"standard", "full"})
+    # Référence norme (pour tooltip rapport)
+    ocpp_ref: str = ""
+
+
+# Registry rempli par cases/__init__.py
+TESTS: List[TestCase] = []
+
+
+def register(*tests: TestCase) -> None:
+    for t in tests:
+        if any(x.name == t.name for x in TESTS):
+            raise ValueError(f"Test déjà enregistré : {t.name}")
+        TESTS.append(t)
+
+
+def find(name: str) -> Optional[TestCase]:
+    for t in TESTS:
+        if t.name == name:
+            return t
+    return None
+
+
+# ───────────────────── Suites ──────────────────────────
+
+SUITES = {
+    "quick": {
+        "label": "Quick smoke (~2 min)",
+        "description": "5 tests essentiels sans prompt technicien. Utile comme vérif rapide.",
+        "tests": [
+            "handshake.boot_notification",
+            "handshake.heartbeat_interval",
+            "cfg.get_configuration",
+            "rem.change_availability",
+            "rem.trigger_heartbeat",
+        ],
+    },
+    "standard": {
+        "label": "Standard (~10 min)",
+        "description": "15 tests avec prompt plug/unplug véhicule. Couvre Core + SmartCharging + Remote.",
+        "tests": [
+            "handshake.boot_notification",
+            "handshake.heartbeat_interval",
+            "handshake.status_notifications",
+            "auth.authorize_valid",
+            "auth.authorize_rejected",
+            "tx.remote_start",
+            "tx.metervalues_units",
+            "tx.remote_stop",
+            "tx.energy_delivered",
+            "sc.set_profile_base",
+            "sc.clear_profile",
+            "cfg.get_configuration",
+            "cfg.change_and_read_back",
+            "cfg.supported_profiles",
+            "rem.change_availability",
+            "rem.trigger_heartbeat",
+        ],
+    },
+    "full": {
+        "label": "Full certification (~30 min)",
+        "description": "Tous les tests — inclut reservation, firmware, diagnostics, power cycle.",
+        "tests": [
+            "handshake.boot_notification",
+            "handshake.heartbeat_interval",
+            "handshake.status_notifications",
+            "handshake.reconnection",
+            "auth.authorize_valid",
+            "auth.authorize_rejected",
+            "auth.local_list_sync",
+            "tx.remote_start",
+            "tx.metervalues_units",
+            "tx.remote_stop",
+            "tx.energy_delivered",
+            "sc.set_profile_base",
+            "sc.current_follows_limit",
+            "sc.profile_replay_after_reboot",
+            "sc.clear_profile",
+            "cfg.get_configuration",
+            "cfg.change_and_read_back",
+            "cfg.supported_profiles",
+            "rem.change_availability",
+            "rem.unlock_connector",
+            "rem.trigger_heartbeat",
+            # Restore connector 1 to Available before reservation tests
+            # (TechnoVE doesn't auto-restore connector 1 after ChangeAvailability connector_0)
+            "resil.availability_toggle",
+            "res.reserve_and_consume",
+            "res.cancel",
+            "res.expiry",
+            "fw.get_diagnostics",
+            "fw.update_firmware_fail_safe",
+            "resil.power_cycle_mid_idle",
+            # Added: tests present in catalog but missing from explicit list
+            "auth.authorize_expired",
+            "auth.authorize_blocked",
+            "auth.authorize_unknown",
+            "auth.authorize_swipe",
+            "sc.ramp_down",
+            "sc.ramp_up",
+            "sc.stacked_profiles",
+            "sc.limit_0a",
+            "rem.clear_cache",
+            "rem.data_transfer",
+            "rem.trigger_metervalues",
+            "rem.trigger_statusnotification",
+            "lal.get_version",
+            "lal.send_full",
+            "lal.send_differential",
+            "resil.heartbeat_freshness",
+            "rem.reset_soft",
+            "rem.reset_hard",
+        ],
+    },
+}
+
+
+def get_suite_tests(suite: str, custom_names: Optional[List[str]] = None) -> List[TestCase]:
+    """Retourne la liste de TestCase pour une suite donnée."""
+    if suite == "custom":
+        names = custom_names or []
+    else:
+        s = SUITES.get(suite)
+        if s is None:
+            raise ValueError(f"Suite inconnue : {suite}")
+        names = s["tests"]
+    out: List[TestCase] = []
+    for name in names:
+        tc = find(name)
+        if tc is None:
+            raise ValueError(f"Test inconnu : {name}")
+        out.append(tc)
+    return out
+
+
+def all_test_descriptors() -> List[dict]:
+    """Pour l'API /certification/tests."""
+    return [
+        {
+            "name": t.name,
+            "category": t.category,
+            "title": t.title,
+            "description": t.description,
+            "requires_profile": t.requires_profile,
+            "requires_vehicle": t.requires_vehicle,
+            "requires_power_cycle": t.requires_power_cycle,
+            "estimated_seconds": t.estimated_seconds,
+            "suites": sorted(t.suites),
+            "ocpp_ref": t.ocpp_ref,
+        }
+        for t in TESTS
+    ]
+
+
+# ───── Import les modules cases/ pour qu'ils s'enregistrent ─────
+# Doit être APRÈS la définition de register() et TESTS.
+from certification.cases import (  # noqa: E402,F401
+    handshake,
+    authorization,
+    transaction,
+    smart_charging,
+    config as config_cases,
+    remote,
+    reservation,
+    firmware,
+    resilience,
+)

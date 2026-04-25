@@ -1,0 +1,125 @@
+{% extends "_admin_base.html" %}
+{% set active = 'tags' %}
+{% block title %}Admin — Whitelist idTags{% endblock %}
+{% block content %}
+<h2>Whitelist idTags</h2>
+<p class="muted" style="margin-bottom:1rem">Table vide = mode permissif (tous les tags Accepted). Dès qu'au moins une ligne est insérée, la whitelist devient obligatoire.</p>
+
+<div class="card">
+  <h3>Ajouter un tag</h3>
+  <div class="form-row">
+    <label>id_tag *</label>
+    <input type="text" id="new_id_tag" maxlength="20" placeholder="ex: ADMIN, RFID_123">
+  </div>
+  <div class="form-row">
+    <label>parent_id_tag</label>
+    <input type="text" id="new_parent" maxlength="20" placeholder="optionnel">
+  </div>
+  <div class="form-row">
+    <label>expiry_date</label>
+    <input type="datetime-local" id="new_expiry">
+  </div>
+  <div class="form-row">
+    <label>note</label>
+    <input type="text" id="new_note" maxlength="200">
+  </div>
+  <div class="form-row">
+    <label></label>
+    <div><button class="btn btn-primary" onclick="createTag()">Créer</button></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="filters">
+    <h3 style="margin:0;flex:1">Tags existants</h3>
+    <label><input type="checkbox" id="f_active" checked> actifs</label>
+    <label><input type="checkbox" id="f_inactive" checked> inactifs</label>
+    <label><input type="checkbox" id="f_expired"> expirés seulement</label>
+    <button class="btn btn-ghost" onclick="loadTags()">Rafraîchir</button>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>id_tag</th><th>parent</th><th>actif</th><th>expiry</th><th>note</th><th>maj</th><th></th>
+      </tr>
+    </thead>
+    <tbody id="tags_body"><tr><td colspan="7" class="empty">Chargement…</td></tr></tbody>
+  </table>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function loadTags() {
+  const fa = document.getElementById('f_active').checked;
+  const fi = document.getElementById('f_inactive').checked;
+  const fe = document.getElementById('f_expired').checked;
+  let params = [];
+  if (fa && !fi) params.push('active=true');
+  else if (!fa && fi) params.push('active=false');
+  if (fe) params.push('expired=true');
+  const url = '/api/tags' + (params.length ? '?' + params.join('&') : '');
+  try {
+    const data = await api('GET', url);
+    const tb = document.getElementById('tags_body');
+    if (!data.tags || data.tags.length === 0) {
+      tb.innerHTML = '<tr><td colspan="7" class="empty">Aucun tag</td></tr>';
+      return;
+    }
+    tb.innerHTML = data.tags.map(t => {
+      const badges = [];
+      if (t.active) badges.push('<span class="badge badge-green">actif</span>');
+      else badges.push('<span class="badge badge-grey">inactif</span>');
+      if (t.expired) badges.push('<span class="badge badge-red">expiré</span>');
+      return `<tr>
+        <td class="mono">${escapeHtml(t.id_tag)}</td>
+        <td class="mono">${escapeHtml(t.parent_id_tag || '')}</td>
+        <td>${badges.join(' ')}</td>
+        <td class="muted">${t.expiry_date ? fmtDate(t.expiry_date) : '-'}</td>
+        <td>${escapeHtml(t.note || '')}</td>
+        <td class="muted">${fmtDate(t.updated_at)}</td>
+        <td class="actions-cell">
+          <button class="btn btn-warn" onclick="toggleTag('${escapeHtml(t.id_tag)}', ${!t.active})">${t.active ? 'Désactiver' : 'Activer'}</button>
+          <button class="btn btn-danger" onclick="deleteTag('${escapeHtml(t.id_tag)}')">Supprimer</button>
+        </td>
+      </tr>`;
+    }).join('');
+  } catch(e) { showToast('Erreur: ' + e.message, true); }
+}
+async function createTag() {
+  const id_tag = document.getElementById('new_id_tag').value.trim();
+  if (!id_tag) { showToast('id_tag requis', true); return; }
+  const body = { id_tag };
+  const parent = document.getElementById('new_parent').value.trim();
+  if (parent) body.parent_id_tag = parent;
+  const expiry = document.getElementById('new_expiry').value;
+  if (expiry) body.expiry_date = new Date(expiry).toISOString();
+  const note = document.getElementById('new_note').value.trim();
+  if (note) body.note = note;
+  try {
+    await api('POST', '/api/tags', body);
+    showToast('Tag créé: ' + id_tag);
+    document.getElementById('new_id_tag').value = '';
+    document.getElementById('new_parent').value = '';
+    document.getElementById('new_expiry').value = '';
+    document.getElementById('new_note').value = '';
+    loadTags();
+  } catch(e) { showToast('Erreur: ' + e.message, true); }
+}
+async function toggleTag(id_tag, newActive) {
+  try {
+    await api('PATCH', '/api/tags/' + encodeURIComponent(id_tag), { active: newActive });
+    showToast((newActive ? 'Activé' : 'Désactivé') + ': ' + id_tag);
+    loadTags();
+  } catch(e) { showToast('Erreur: ' + e.message, true); }
+}
+async function deleteTag(id_tag) {
+  if (!confirm('Supprimer définitivement le tag ' + id_tag + ' ?')) return;
+  try {
+    await api('DELETE', '/api/tags/' + encodeURIComponent(id_tag));
+    showToast('Supprimé: ' + id_tag);
+    loadTags();
+  } catch(e) { showToast('Erreur: ' + e.message, true); }
+}
+loadTags();
+</script>
+{% endblock %}

@@ -1,0 +1,16 @@
+{# _kpis.html — 4 cartes KPIs + chart puissance temps reel #}
+<main>
+
+  <!-- Statistiques globales -->
+  <div class="stats-grid">
+    <div class="stat-card"><div class="val" id="s-total">{{ stats.total_chargers }}</div><div class="lbl">Bornes enregistrées</div></div>
+    <div class="stat-card"><div class="val" id="s-conn">{{ connected_chargers|length }}</div><div class="lbl">Connectées</div></div>
+    <div class="stat-card"><div class="val" id="s-active">{{ stats.active_sessions }}</div><div class="lbl">Sessions actives</div></div>
+    <div class="stat-card"><div class="val" id="s-energy">{{ stats.total_energy_kwh }}</div><div class="lbl">kWh livrés</div></div>
+  </div>
+
+  <!-- Graphique puissance -->
+  <div class="chart-card">
+    <div class="section-title" style="margin-bottom:.75rem">Puissance temps réel (W)</div>
+    <canvas id="powerChart"></canvas>
+  </div>

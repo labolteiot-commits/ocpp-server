@@ -1,0 +1,444 @@
+"""Routes REST + WebSocket pour la certification OCPP 1.6J.
+
+Endpoints :
+  GET  /api/certification/suites              → liste les 3 suites + descr.
+  GET  /api/certification/tests               → catalogue complet
+  POST /api/certification/runs                → démarre un run
+  GET  /api/certification/runs                → liste runs récents (DB)
+  GET  /api/certification/runs/{run_id}       → statut + résultats
+  POST /api/certification/runs/{run_id}/cancel       → annule
+  POST /api/certification/runs/{run_id}/prompt       → technicien répond
+  GET  /api/certification/runs/{run_id}/report        → HTML
+  GET  /api/certification/runs/{run_id}/report.json   → JSON
+  WS   /ws/certification/{run_id}                      → flux live
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse, JSONResponse, Response
+from pydantic import BaseModel, Field
+from sqlalchemy import desc, select
+
+from api.security import require_auth
+from db.database import AsyncSessionLocal
+from db.models import CertificationRun as CertRunRow
+from db.models import CertificationTestResult as CertResultRow
+
+from certification import catalog
+from certification.events import get_bus, drop_bus
+from certification.runner import cancel_run, get_run, start_run
+
+
+router = APIRouter(
+    prefix="/api/certification",
+    tags=["🧪 Certification OCPP 1.6J"],
+)
+
+# WS séparé : pas de prefix (mount à /ws/certification/{run_id}), pas
+# de dépendance HTTP Basic (incompatible avec le handshake WebSocket).
+# La page parente /admin/certification est protégée — le WS ne porte
+# aucune info sensible au-delà des events du run déjà lié à son id.
+ws_router = APIRouter()
+
+
+# ───────────────────────── Schemas ─────────────────────────
+
+
+class StartRunRequest(BaseModel):
+    charger_id: str = Field(..., examples=["VIRTUAL-001"])
+    suite: str = Field("standard", examples=["quick", "standard", "full", "custom"])
+    custom_names: Optional[List[str]] = Field(
+        default=None,
+        description="Liste des noms de tests si suite='custom'",
+    )
+    technician_name: Optional[str] = None
+    notes: Optional[str] = None
+    options: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Options runtime (no_prompts, max_test_seconds, etc.)",
+    )
+
+
+class PromptResponse(BaseModel):
+    prompt_id: str
+    response: str = Field(..., examples=["done", "skip", "abort"])
+
+
+# ───────────────────────── Helpers ─────────────────────────
+
+
+def _get_ocpp_server(request: Request):
+    """Récupère l'instance OCPPServer depuis app.state.ocpp_server."""
+    srv = getattr(request.app.state, "ocpp_server", None)
+    if srv is None:
+        raise HTTPException(status_code=503, detail="OCPPServer non initialisé")
+    return srv
+
+
+async def _run_row_to_dict(row: CertRunRow, with_report: bool = False) -> dict:
+    d = {
+        "run_id": row.run_id,
+        "charger_id": row.charger_id,
+        "suite": row.suite,
+        "status": row.status,
+        "started_at": row.started_at.isoformat() if row.started_at else None,
+        "finished_at": row.finished_at.isoformat() if row.finished_at else None,
+        "technician_name": row.technician_name,
+        "notes": row.notes,
+        "passed": row.passed or 0,
+        "failed": row.failed or 0,
+        "skipped": row.skipped or 0,
+        "total_tests": row.total or 0,
+        "firmware_before": row.firmware_before,
+        "supported_profiles": (
+            row.supported_profiles.split(",") if row.supported_profiles else []
+        ),
+    }
+    if with_report:
+        d["report_html_available"] = bool(row.report_html)
+        d["report_json_available"] = bool(row.report_json)
+    return d
+
+
+# ───────────────────────── GET catalog ─────────────────────────
+
+
+@router.get(
+    "/suites",
+    summary="Liste des suites de certification",
+    description="Renvoie les 3 suites prédéfinies (quick / standard / full) avec description, nombre de tests et durée estimée.",
+    dependencies=[Depends(require_auth)],
+)
+async def list_suites():
+    out = []
+    for key, spec in catalog.SUITES.items():
+        names = spec["tests"]
+        tests = [catalog.find(n) for n in names]
+        tests = [t for t in tests if t is not None]
+        total_est = sum((t.estimated_seconds or 0) for t in tests)
+        requires_vehicle = any(t.requires_vehicle for t in tests)
+        requires_power_cycle = any(t.requires_power_cycle for t in tests)
+        out.append({
+            "key": key,
+            "label": spec["label"],
+            "description": spec["description"],
+            "test_count": len(names),
+            "estimated_seconds": total_est,
+            "requires_vehicle": requires_vehicle,
+            "requires_power_cycle": requires_power_cycle,
+        })
+    return {"suites": out}
+
+
+@router.get(
+    "/tests",
+    summary="Catalogue complet des tests",
+    description="Renvoie tous les tests enregistrés (~26) avec leur catégorie, description, suites, profil OCPP requis et réf. norme.",
+    dependencies=[Depends(require_auth)],
+)
+async def list_tests():
+    descriptors = catalog.all_test_descriptors()
+    # Groupe par catégorie pour l'UI
+    by_cat: Dict[str, List[dict]] = {}
+    for d in descriptors:
+        by_cat.setdefault(d["category"], []).append(d)
+    return {
+        "total": len(descriptors),
+        "tests": descriptors,
+        "by_category": by_cat,
+    }
+
+
+# ───────────────────────── Runs ─────────────────────────
+
+
+@router.post(
+    "/runs",
+    status_code=202,
+    summary="Démarre un run de certification",
+    description=(
+        "Lance un run async en tâche de fond. "
+        "Retour immédiat avec `run_id`. "
+        "Suivre l'avancement via GET `/runs/{run_id}` ou WS `/ws/certification/{run_id}`."
+    ),
+    dependencies=[Depends(require_auth)],
+)
+async def start_run_endpoint(req: StartRunRequest, request: Request):
+    srv = _get_ocpp_server(request)
+    try:
+        run = await start_run(
+            charger_id=req.charger_id,
+            suite=req.suite,
+            ocpp_server=srv,
+            tests=req.custom_names,
+            technician_name=req.technician_name,
+            notes=req.notes,
+            options=req.options or {},
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur démarrage run : {e}")
+
+    return {
+        "run_id": run.run_id,
+        "charger_id": run.charger_id,
+        "suite": run.suite,
+        "status": run.status,
+        "ws_url": f"/ws/certification/{run.run_id}",
+        "poll_url": f"/api/certification/runs/{run.run_id}",
+    }
+
+
+@router.get(
+    "/runs",
+    summary="Historique des runs",
+    description="Liste les derniers runs de certification. Filtre optionnel par `charger_id`.",
+    dependencies=[Depends(require_auth)],
+)
+async def list_runs(
+    charger_id: Optional[str] = None,
+    limit: int = 50,
+):
+    limit = min(max(int(limit or 50), 1), 500)
+    async with AsyncSessionLocal() as db:
+        q = select(CertRunRow).order_by(desc(CertRunRow.started_at)).limit(limit)
+        if charger_id:
+            q = q.where(CertRunRow.charger_id == charger_id)
+        r = await db.execute(q)
+        rows = r.scalars().all()
+    out = [await _run_row_to_dict(row, with_report=True) for row in rows]
+    return {"count": len(out), "runs": out}
+
+
+@router.get(
+    "/runs/{run_id}",
+    summary="Détail d'un run",
+    description="Retourne l'état courant + tous les résultats de test persistés.",
+    dependencies=[Depends(require_auth)],
+)
+async def get_run_detail(run_id: str):
+    # In-memory si encore actif
+    in_mem = get_run(run_id)
+    async with AsyncSessionLocal() as db:
+        r = await db.execute(select(CertRunRow).where(CertRunRow.run_id == run_id))
+        row = r.scalar_one_or_none()
+        if row is None and in_mem is None:
+            raise HTTPException(status_code=404, detail="Run introuvable")
+        results_rows: List[CertResultRow] = []
+        if row is not None:
+            r2 = await db.execute(
+                select(CertResultRow)
+                .where(CertResultRow.run_id == run_id)
+                .order_by(CertResultRow.started_at)
+            )
+            results_rows = list(r2.scalars().all())
+
+    # Compose la réponse en fusionnant DB + in-memory (in-memory a priorité
+    # sur les résultats live car la DB est async-commit best-effort)
+    if row is not None:
+        base = await _run_row_to_dict(row, with_report=True)
+    else:
+        base = {
+            "run_id": in_mem.run_id,
+            "charger_id": in_mem.charger_id,
+            "suite": in_mem.suite,
+            "status": in_mem.status,
+            "started_at": in_mem.started_at.isoformat() if in_mem.started_at else None,
+            "finished_at": in_mem.finished_at.isoformat() if in_mem.finished_at else None,
+            "technician_name": in_mem.technician_name,
+            "notes": in_mem.notes,
+            "passed": sum(1 for x in in_mem.results if x.get("status") == "passed"),
+            "failed": sum(1 for x in in_mem.results if x.get("status") == "failed"),
+            "skipped": sum(1 for x in in_mem.results if x.get("status") == "skipped"),
+            "total_tests": len(in_mem.tests),
+            "firmware_before": in_mem.firmware_before,
+            "supported_profiles": in_mem.supported_profiles,
+            "report_html_available": bool(in_mem.report_html),
+            "report_json_available": bool(in_mem.report_json),
+        }
+
+    # Résultats : préférence in-memory pour le live, sinon DB
+    if in_mem is not None and in_mem.results:
+        base["results"] = in_mem.results
+    else:
+        base["results"] = [
+            {
+                "name": r.test_name,
+                "category": r.category,
+                "title": r.title,
+                "status": r.status,
+                "duration_s": r.duration_s,
+                "message": r.message,
+                "details": (json.loads(r.details_json) if r.details_json else {}),
+                "recommendation": r.recommendation,
+            }
+            for r in results_rows
+        ]
+
+    # Prompt ouverts (pour la modale UI)
+    bus = get_bus(run_id, create=False)
+    if bus is not None:
+        # On expose juste l'historique récent ; la modale UI intercepte via WS
+        base["live"] = True
+    else:
+        base["live"] = False
+
+    return base
+
+
+@router.post(
+    "/runs/{run_id}/cancel",
+    summary="Annule un run en cours",
+    dependencies=[Depends(require_auth)],
+)
+async def cancel_run_endpoint(run_id: str):
+    ok = await cancel_run(run_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Run inexistant ou déjà terminé")
+    return {"cancelled": True}
+
+
+@router.post(
+    "/runs/{run_id}/prompt",
+    summary="Réponse technicien à un prompt",
+    description=(
+        "Transmet la réponse d'un prompt technicien (bouton cliqué dans la modale). "
+        "`response` = `done` | `skip` | `abort` ou label bouton custom."
+    ),
+    dependencies=[Depends(require_auth)],
+)
+async def answer_prompt(run_id: str, body: PromptResponse):
+    bus = get_bus(run_id, create=False)
+    if bus is None:
+        raise HTTPException(status_code=404, detail="Bus inconnu (run absent)")
+    ok = bus.resolve_prompt(body.prompt_id, body.response)
+    if not ok:
+        raise HTTPException(status_code=409, detail="Prompt introuvable ou déjà résolu")
+    return {"resolved": True}
+
+
+# ───────────────────────── Reports ─────────────────────────
+
+
+@router.get(
+    "/runs/{run_id}/report",
+    response_class=HTMLResponse,
+    summary="Rapport HTML",
+    description="Rapport auto-généré, standalone, print-friendly. Téléchargeable ou affichable dans un onglet.",
+    dependencies=[Depends(require_auth)],
+)
+async def get_report_html(run_id: str):
+    # In-memory d'abord (run en cours / à peine fini)
+    in_mem = get_run(run_id)
+    if in_mem is not None and in_mem.report_html:
+        return HTMLResponse(content=in_mem.report_html)
+    # Sinon DB
+    async with AsyncSessionLocal() as db:
+        r = await db.execute(select(CertRunRow).where(CertRunRow.run_id == run_id))
+        row = r.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Run introuvable")
+    if not row.report_html:
+        raise HTTPException(status_code=404, detail="Rapport HTML non disponible (run non terminé ?)")
+    return HTMLResponse(content=row.report_html)
+
+
+@router.get(
+    "/runs/{run_id}/report.json",
+    summary="Rapport JSON",
+    description="Même données que le HTML, mais en JSON structuré.",
+    dependencies=[Depends(require_auth)],
+)
+async def get_report_json(run_id: str):
+    in_mem = get_run(run_id)
+    if in_mem is not None and in_mem.report_json:
+        return Response(content=in_mem.report_json, media_type="application/json")
+    async with AsyncSessionLocal() as db:
+        r = await db.execute(select(CertRunRow).where(CertRunRow.run_id == run_id))
+        row = r.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Run introuvable")
+    if not row.report_json:
+        raise HTTPException(status_code=404, detail="Rapport JSON non disponible")
+    return Response(content=row.report_json, media_type="application/json")
+
+
+# ───────────────────────── WebSocket ─────────────────────────
+
+
+# Note : pas de dépendance require_auth sur le WS (FastAPI ne supporte
+# pas bien les deps async sur WS). Auth côté dashboard = Basic sur la
+# page parente ; le WS est ouvert en best-effort. À durcir si le
+# serveur devient exposé publiquement.
+
+
+@ws_router.websocket("/ws/certification/{run_id}")
+async def ws_certification(websocket: WebSocket, run_id: str):
+    await websocket.accept()
+    bus = get_bus(run_id, create=False)
+    if bus is None:
+        await websocket.send_text(json.dumps({"event": "error", "message": "Run inconnu"}))
+        await websocket.close()
+        return
+    queue = bus.subscribe()
+    try:
+        while True:
+            # Lis en parallèle : event depuis bus OU ping depuis client
+            get_task = asyncio.create_task(queue.get())
+            recv_task = asyncio.create_task(websocket.receive_text())
+            done, pending = await asyncio.wait(
+                {get_task, recv_task},
+                return_when=asyncio.FIRST_COMPLETED,
+                timeout=60.0,
+            )
+            if not done:
+                # Keepalive après 60s d'inactivité
+                try:
+                    await websocket.send_text(json.dumps({"event": "ping"}))
+                except Exception:
+                    break
+                for t in (get_task, recv_task):
+                    if not t.done():
+                        t.cancel()
+                continue
+            for t in pending:
+                t.cancel()
+            if get_task in done:
+                ev = get_task.result()
+                try:
+                    await websocket.send_text(json.dumps(ev, default=str))
+                except Exception:
+                    break
+            if recv_task in done:
+                try:
+                    msg = recv_task.result()
+                except WebSocketDisconnect:
+                    break
+                except Exception:
+                    break
+                # Le client peut poster {"action":"prompt_response",
+                # "prompt_id":"p_xxx","response":"done"} pour résoudre un
+                # prompt sans passer par REST.
+                try:
+                    obj = json.loads(msg)
+                    if obj.get("action") == "prompt_response":
+                        bus.resolve_prompt(obj.get("prompt_id", ""), obj.get("response", ""))
+                except Exception:
+                    pass
+    except WebSocketDisconnect:
+        pass
+    finally:
+        try:
+            bus.unsubscribe(queue)
+        except Exception:
+            pass
+        try:
+            await websocket.close()
+        except Exception:
+            pass

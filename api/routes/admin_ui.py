@@ -1,0 +1,70 @@
+# api/routes/admin_ui.py
+"""Sprint 30 Volet B — Pages admin HTML : Tags, Config drifts, Firmware.
+
+Pattern simple : 3 pages Jinja2 indépendantes qui consomment les APIs
+JSON existantes via fetch() côté client. Auth HTTP Basic déjà appliquée
+via `Depends(require_auth)` dans `api/main.py`.
+
+Pas de framework JS (pas de Vue/React/Bootstrap) — HTML + CSS sobre +
+fetch natif. Style aligné avec `dashboard/templates/dashboard.html`
+(palette slate/sky, même typo).
+"""
+from __future__ import annotations
+
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from pathlib import Path
+
+router = APIRouter()
+templates = Jinja2Templates(
+    directory=Path(__file__).parent.parent.parent / "dashboard" / "templates"
+)
+
+
+@router.get("/admin/tags", response_class=HTMLResponse)
+async def admin_tags(request: Request):
+    """Whitelist idTags — CRUD inline."""
+    return templates.TemplateResponse("admin_tags.html", {"request": request})
+
+
+@router.get("/admin/config-drifts", response_class=HTMLResponse)
+async def admin_config_drifts(request: Request):
+    """Drifts de configuration (observed != expected)."""
+    return templates.TemplateResponse("admin_config_drifts.html", {"request": request})
+
+
+@router.get("/admin/firmware", response_class=HTMLResponse)
+async def admin_firmware(request: Request):
+    """UpdateFirmware — formulaire + historique par borne."""
+    return templates.TemplateResponse("admin_firmware.html", {"request": request})
+
+
+@router.get("/admin/status-history", response_class=HTMLResponse)
+async def admin_status_history(request: Request):
+    """Sprint 31 Volet C — timeline des StatusNotification par borne."""
+    return templates.TemplateResponse(
+        "admin_status_history.html", {"request": request}
+    )
+
+
+@router.get("/admin/capabilities", response_class=HTMLResponse)
+async def admin_capabilities(request: Request):
+    """Sprint 32 Point 1 — SupportedFeatureProfiles par borne + bouton détection."""
+    return templates.TemplateResponse(
+        "admin_capabilities.html", {"request": request}
+    )
+
+
+@router.get("/admin/activity", response_class=HTMLResponse)
+async def admin_activity(request: Request):
+    """Sprint 32 Point 2 — Activity log unifié : timeline OCPP + filtres + recherche + doc FR."""
+    return templates.TemplateResponse(
+        "admin_activity.html", {"request": request}
+    )
+
+
+@router.get("/api-explorer", response_class=HTMLResponse)
+async def api_explorer(request: Request):
+    """Sprint 31 - API Explorer dynamique par profil OCPP, dropdown bornes en direct."""
+    return templates.TemplateResponse("api_explorer.html", {"request": request})

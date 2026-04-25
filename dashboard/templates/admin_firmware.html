@@ -1,0 +1,133 @@
+{% extends "_admin_base.html" %}
+{% set active = 'firmware' %}
+{% block title %}Admin — Firmware updates{% endblock %}
+{% block content %}
+<h2>UpdateFirmware — déploiement + historique</h2>
+<p class="muted" style="margin-bottom:1rem">Déclenche l'installation d'un firmware OCPP §6.19 sur une borne connectée. La borne télécharge depuis `location` à la date `retrieve_date` et remonte son statut via FirmwareStatusNotification.</p>
+
+<div class="card">
+  <h3>Nouvelle demande</h3>
+  <div class="form-row">
+    <label>Borne *</label>
+    <select id="fw_charger"></select>
+  </div>
+  <div class="form-row">
+    <label>Location (URL) *</label>
+    <input type="url" id="fw_location" placeholder="http://192.168.1.210:5001/ota/firmware.bin">
+  </div>
+  <div class="form-row">
+    <label>Retrieve date</label>
+    <input type="datetime-local" id="fw_retrieve">
+    <span class="muted">(défaut : maintenant + 1 min)</span>
+  </div>
+  <div class="form-row">
+    <label>Retries</label>
+    <input type="number" id="fw_retries" min="0" max="10" placeholder="optionnel">
+  </div>
+  <div class="form-row">
+    <label>Retry interval (s)</label>
+    <input type="number" id="fw_retry_interval" min="10" max="3600" placeholder="optionnel">
+  </div>
+  <div class="form-row">
+    <label></label>
+    <div><button class="btn btn-primary" onclick="submitFirmware()">Envoyer UpdateFirmware</button></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="filters">
+    <h3 style="margin:0;flex:1">Historique</h3>
+    <label>Borne :
+      <select id="h_charger" onchange="loadHistory()"></select>
+    </label>
+    <button class="btn btn-ghost" onclick="loadHistory()">Rafraîchir</button>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th><th>Demandé</th><th>Location</th><th>Retrieve</th>
+        <th>Status</th><th>Maj</th><th>Version avant → après</th>
+      </tr>
+    </thead>
+    <tbody id="hist_body"><tr><td colspan="7" class="empty">Sélectionne une borne</td></tr></tbody>
+  </table>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+let CHARGERS = [];
+
+async function loadChargers() {
+  try {
+    const data = await api('GET', '/api/chargers/');
+    CHARGERS = (data.chargers || data || []).map(c => c.id || c.charger_id || c);
+    const opts = CHARGERS.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+    document.getElementById('fw_charger').innerHTML = '<option value="">-- choisir --</option>' + opts;
+    document.getElementById('h_charger').innerHTML = '<option value="">-- choisir --</option>' + opts;
+  } catch(e) { showToast('Impossible de charger les bornes: ' + e.message, true); }
+}
+
+async function submitFirmware() {
+  const charger_id = document.getElementById('fw_charger').value;
+  const location = document.getElementById('fw_location').value.trim();
+  if (!charger_id) { showToast('Borne requise', true); return; }
+  if (!location) { showToast('Location requise', true); return; }
+  const body = { charger_id, location };
+  const rd = document.getElementById('fw_retrieve').value;
+  if (rd) body.retrieve_date = new Date(rd).toISOString();
+  const retries = document.getElementById('fw_retries').value;
+  if (retries !== '') body.retries = parseInt(retries);
+  const ri = document.getElementById('fw_retry_interval').value;
+  if (ri !== '') body.retry_interval = parseInt(ri);
+  try {
+    const data = await api('POST', '/api/commands/update-firmware', body);
+    showToast(`UpdateFirmware envoyé (id=${data.id}, ${data.call_status})`);
+    document.getElementById('fw_location').value = '';
+    // Sélectionner cette borne dans l'historique
+    document.getElementById('h_charger').value = charger_id;
+    loadHistory();
+  } catch(e) { showToast('Erreur: ' + e.message, true); }
+}
+
+function statusBadge(s) {
+  const st = (s || '').toLowerCase();
+  if (st === 'installed') return 'badge-green';
+  if (st.includes('failed')) return 'badge-red';
+  if (st === 'installing' || st === 'downloading' || st === 'downloaded') return 'badge-amber';
+  if (st === 'requested') return 'badge-blue';
+  return 'badge-grey';
+}
+
+async function loadHistory() {
+  const cid = document.getElementById('h_charger').value;
+  const tb = document.getElementById('hist_body');
+  if (!cid) {
+    tb.innerHTML = '<tr><td colspan="7" class="empty">Sélectionne une borne</td></tr>';
+    return;
+  }
+  try {
+    const data = await api('GET', '/api/commands/firmware-updates/' + encodeURIComponent(cid));
+    if (!data.updates || data.updates.length === 0) {
+      tb.innerHTML = '<tr><td colspan="7" class="empty">Aucune mise à jour</td></tr>';
+      return;
+    }
+    tb.innerHTML = data.updates.map(u => {
+      const versionStr = (u.firmware_version_before || '?') + ' → ' + (u.firmware_version_after || '?');
+      return `<tr>
+        <td class="muted">#${u.id}</td>
+        <td class="muted">${fmtDate(u.requested_at)}</td>
+        <td class="mono" style="word-break:break-all;max-width:260px">${escapeHtml(u.location)}</td>
+        <td class="muted">${fmtDate(u.retrieve_date)}</td>
+        <td><span class="badge ${statusBadge(u.status)}">${escapeHtml(u.status)}</span></td>
+        <td class="muted">${fmtDate(u.status_updated_at)}</td>
+        <td class="mono">${escapeHtml(versionStr)}</td>
+      </tr>`;
+    }).join('');
+  } catch(e) {
+    tb.innerHTML = '<tr><td colspan="7" class="empty">Erreur: ' + escapeHtml(e.message) + '</td></tr>';
+  }
+}
+
+(async () => { await loadChargers(); })();
+</script>
+{% endblock %}

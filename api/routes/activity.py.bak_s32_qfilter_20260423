@@ -1,0 +1,383 @@
+# api/routes/activity.py
+"""
+Sprint 32 — API Activity Log + Documentation messages OCPP.
+
+Endpoints :
+  GET  /api/activity                       Liste paginée + filtres
+  GET  /api/activity/stats                 Stats globales (count par borne, par action)
+  GET  /api/activity/{id}                  Détail d'une ligne (avec doc message)
+  GET  /api/activity/charger/{id}/timeline Timeline d'une borne sur fenêtre
+  GET  /api/activity/_logger/stats         État du logger (queue, cache, worker)
+  POST /api/activity/_purge                Purge manuelle (jours en query)
+
+  GET  /api/message-docs                   Liste de toutes les actions documentées
+  GET  /api/message-docs/{action}          Doc détaillée d'une action OCPP
+"""
+from __future__ import annotations
+
+import json
+from datetime import datetime, timedelta
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException, Query
+from sqlalchemy import select, desc, func
+
+from db.database import AsyncSessionLocal
+from db.models import ChargerActivityLog, OcppMessageDoc, Charger
+
+router = APIRouter()
+
+TAG_ACTIVITY  = "📜 Activity Log (audit unifié)"
+TAG_DOCS      = "📖 Documentation OCPP 1.6J"
+
+
+# ─────────────────────────────────────── Activity Log ──────────────────────
+
+def _row_to_dict(row: ChargerActivityLog, *, include_payload: bool = True) -> dict:
+    payload_obj = None
+    if include_payload and row.payload:
+        try:
+            payload_obj = json.loads(row.payload)
+        except Exception:
+            payload_obj = row.payload  # garde la string brute si parse fail
+    return {
+        "id":                row.id,
+        "charger_id":        row.charger_id,
+        "direction":         row.direction,
+        "msg_type":          row.msg_type,
+        "msg_type_label":    {2: "CALL", 3: "CALLRESULT", 4: "CALLERROR"}.get(row.msg_type, "?"),
+        "action":            row.action,
+        "unique_id":         row.unique_id,
+        "payload":           payload_obj if include_payload else None,
+        "error_code":        row.error_code,
+        "error_description": row.error_description,
+        "connector_id":      row.connector_id,
+        "transaction_id":    row.transaction_id,
+        "timestamp":         row.timestamp.isoformat() if row.timestamp else None,
+    }
+
+
+@router.get("/activity", tags=[TAG_ACTIVITY],
+            summary="Liste paginée d'activité OCPP",
+            description="""
+Liste paginée du journal d'activité unifié (CALL/CALLRESULT/CALLERROR).
+
+**Filtres combinables :**
+* `charger_id` — borne spécifique
+* `direction` — `in` (borne→serveur) ou `out` (serveur→borne)
+* `msg_type` — 2 (CALL), 3 (CALLRESULT), 4 (CALLERROR)
+* `action` — type de message OCPP (BootNotification, Heartbeat, MeterValues, ...)
+* `transaction_id` — toutes les lignes d'une session
+* `since` — timestamp ISO UTC, lignes depuis cette date
+* `until` — timestamp ISO UTC, lignes jusqu'à cette date
+* `q` — recherche libre dans `payload` (LIKE %q%)
+
+Tri descendant par timestamp. Pagination via `limit` (max 500) + `offset`.
+""")
+async def list_activity(
+    charger_id:      Optional[str] = Query(None),
+    direction:       Optional[str] = Query(None, regex="^(in|out)$"),
+    msg_type:        Optional[int] = Query(None, ge=2, le=4),
+    action:          Optional[str] = Query(None),
+    transaction_id:  Optional[int] = Query(None),
+    since:           Optional[datetime] = Query(None),
+    until:           Optional[datetime] = Query(None),
+    q:               Optional[str] = Query(None, min_length=1, max_length=120),
+    limit:           int = Query(100, ge=1, le=500),
+    offset:          int = Query(0, ge=0),
+    include_payload: bool = Query(True, description="Inclure le payload complet (peut être lourd)."),
+):
+    async with AsyncSessionLocal() as db:
+        stmt = select(ChargerActivityLog)
+        if charger_id:
+            stmt = stmt.where(ChargerActivityLog.charger_id == charger_id)
+        if direction:
+            stmt = stmt.where(ChargerActivityLog.direction == direction)
+        if msg_type is not None:
+            stmt = stmt.where(ChargerActivityLog.msg_type == msg_type)
+        if action:
+            stmt = stmt.where(ChargerActivityLog.action == action)
+        if transaction_id is not None:
+            stmt = stmt.where(ChargerActivityLog.transaction_id == transaction_id)
+        if since:
+            stmt = stmt.where(ChargerActivityLog.timestamp >= since)
+        if until:
+            stmt = stmt.where(ChargerActivityLog.timestamp <= until)
+        if q:
+            stmt = stmt.where(ChargerActivityLog.payload.like(f"%{q}%"))
+
+        # Total avant pagination (utile pour UI)
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total = (await db.execute(count_stmt)).scalar() or 0
+
+        stmt = stmt.order_by(desc(ChargerActivityLog.timestamp)) \
+                   .offset(offset).limit(limit)
+        r = await db.execute(stmt)
+        rows = r.scalars().all()
+
+        return {
+            "count":   len(rows),
+            "total":   total,
+            "limit":   limit,
+            "offset":  offset,
+            "items":   [_row_to_dict(row, include_payload=include_payload) for row in rows],
+        }
+
+
+@router.get("/activity/stats", tags=[TAG_ACTIVITY],
+            summary="Stats agrégées du journal",
+            description="""
+Renvoie :
+* `total_rows` global
+* `per_charger` : count par borne
+* `per_action` : count par action OCPP (top 30)
+* `per_direction` : in/out
+* `per_msg_type` : 2/3/4
+* `oldest`, `newest` : bornes temporelles
+
+Optionnel : `since` pour limiter à une fenêtre récente.
+""")
+async def activity_stats(since: Optional[datetime] = Query(None)):
+    async with AsyncSessionLocal() as db:
+        base = select(ChargerActivityLog)
+        if since:
+            base = base.where(ChargerActivityLog.timestamp >= since)
+
+        total = (await db.execute(
+            select(func.count()).select_from(base.subquery())
+        )).scalar() or 0
+
+        per_charger = {}
+        r = await db.execute(
+            select(ChargerActivityLog.charger_id, func.count())
+            .select_from(base.subquery() if since else ChargerActivityLog)
+            .group_by(ChargerActivityLog.charger_id)
+        )
+        # Re-faire la query simple si pas de subquery filter
+        if since:
+            r = await db.execute(
+                select(ChargerActivityLog.charger_id, func.count())
+                .where(ChargerActivityLog.timestamp >= since)
+                .group_by(ChargerActivityLog.charger_id)
+            )
+        else:
+            r = await db.execute(
+                select(ChargerActivityLog.charger_id, func.count())
+                .group_by(ChargerActivityLog.charger_id)
+            )
+        for cid, c in r.all():
+            per_charger[cid] = c
+
+        per_action = {}
+        if since:
+            r = await db.execute(
+                select(ChargerActivityLog.action, func.count())
+                .where(ChargerActivityLog.timestamp >= since)
+                .group_by(ChargerActivityLog.action)
+                .order_by(desc(func.count()))
+                .limit(30)
+            )
+        else:
+            r = await db.execute(
+                select(ChargerActivityLog.action, func.count())
+                .group_by(ChargerActivityLog.action)
+                .order_by(desc(func.count()))
+                .limit(30)
+            )
+        for action, c in r.all():
+            per_action[action or "(inconnu)"] = c
+
+        per_direction = {}
+        if since:
+            r = await db.execute(
+                select(ChargerActivityLog.direction, func.count())
+                .where(ChargerActivityLog.timestamp >= since)
+                .group_by(ChargerActivityLog.direction)
+            )
+        else:
+            r = await db.execute(
+                select(ChargerActivityLog.direction, func.count())
+                .group_by(ChargerActivityLog.direction)
+            )
+        for d, c in r.all():
+            per_direction[d] = c
+
+        per_msg_type = {}
+        if since:
+            r = await db.execute(
+                select(ChargerActivityLog.msg_type, func.count())
+                .where(ChargerActivityLog.timestamp >= since)
+                .group_by(ChargerActivityLog.msg_type)
+            )
+        else:
+            r = await db.execute(
+                select(ChargerActivityLog.msg_type, func.count())
+                .group_by(ChargerActivityLog.msg_type)
+            )
+        for t, c in r.all():
+            per_msg_type[str(t)] = c
+
+        oldest = (await db.execute(
+            select(func.min(ChargerActivityLog.timestamp))
+        )).scalar()
+        newest = (await db.execute(
+            select(func.max(ChargerActivityLog.timestamp))
+        )).scalar()
+
+        return {
+            "total_rows":    total,
+            "per_charger":   per_charger,
+            "per_action":    per_action,
+            "per_direction": per_direction,
+            "per_msg_type":  per_msg_type,
+            "oldest":        oldest.isoformat() if oldest else None,
+            "newest":        newest.isoformat() if newest else None,
+        }
+
+
+@router.get("/activity/_logger/stats", tags=[TAG_ACTIVITY],
+            summary="État du logger d'activité (queue, cache, worker)")
+async def logger_stats():
+    from core.activity_logger import stats
+    return stats()
+
+
+@router.post("/activity/_purge", tags=[TAG_ACTIVITY],
+             summary="Purge manuelle des lignes plus vieilles que N jours")
+async def purge(days: int = Query(90, ge=1, le=3650)):
+    from core.activity_logger import purge_activity
+    deleted = await purge_activity(days=days)
+    return {"deleted": deleted, "older_than_days": days}
+
+
+@router.get("/activity/charger/{charger_id}/timeline", tags=[TAG_ACTIVITY],
+            summary="Timeline récente d'une borne",
+            description="""
+Renvoie les N derniers événements d'une borne (défaut 200) sur une fenêtre
+optionnelle (défaut 24h). Utile pour la modal "voir l'activité récente"
+sur la page borne.
+""")
+async def charger_timeline(
+    charger_id: str,
+    hours:      int = Query(24, ge=1, le=720),
+    limit:      int = Query(200, ge=1, le=1000),
+):
+    since = datetime.utcnow() - timedelta(hours=hours)
+    async with AsyncSessionLocal() as db:
+        # Vérifier que la borne existe (404 si non)
+        r = await db.execute(select(Charger).where(Charger.id == charger_id))
+        if r.scalar_one_or_none() is None:
+            raise HTTPException(404, f"Borne inconnue : {charger_id}")
+
+        r = await db.execute(
+            select(ChargerActivityLog)
+            .where(ChargerActivityLog.charger_id == charger_id,
+                   ChargerActivityLog.timestamp >= since)
+            .order_by(desc(ChargerActivityLog.timestamp))
+            .limit(limit)
+        )
+        rows = r.scalars().all()
+        return {
+            "charger_id": charger_id,
+            "hours":      hours,
+            "count":      len(rows),
+            "items":      [_row_to_dict(row) for row in rows],
+        }
+
+
+@router.get("/activity/{row_id}", tags=[TAG_ACTIVITY],
+            summary="Détail d'une ligne + doc du message",
+            description="""
+Renvoie la ligne complète (payload formaté) ET la documentation FR du
+message OCPP correspondant si disponible (jointure OcppMessageDoc.name == action).
+""")
+async def get_activity_row(row_id: int):
+    async with AsyncSessionLocal() as db:
+        r = await db.execute(
+            select(ChargerActivityLog).where(ChargerActivityLog.id == row_id)
+        )
+        row = r.scalar_one_or_none()
+        if row is None:
+            raise HTTPException(404, f"Ligne introuvable : id={row_id}")
+
+        result = _row_to_dict(row)
+
+        if row.action:
+            r2 = await db.execute(
+                select(OcppMessageDoc).where(OcppMessageDoc.name == row.action)
+            )
+            doc = r2.scalar_one_or_none()
+            if doc:
+                result["doc"] = _doc_to_dict(doc)
+        return result
+
+
+# ───────────────────────────────────── Doc messages ─────────────────────────
+
+def _doc_to_dict(doc: OcppMessageDoc) -> dict:
+    fields = None
+    if doc.fields_fr:
+        try:
+            fields = json.loads(doc.fields_fr)
+        except Exception:
+            fields = None
+    return {
+        "name":           doc.name,
+        "direction_norm": doc.direction_norm,
+        "profile":        doc.profile,
+        "section_norm":   doc.section_norm,
+        "summary_fr":     doc.summary_fr,
+        "description_fr": doc.description_fr,
+        "fields_fr":      fields,
+        "triggered_by":   doc.triggered_by,
+        "cs_response":    doc.cs_response,
+        "updated_at":     doc.updated_at.isoformat() if doc.updated_at else None,
+    }
+
+
+@router.get("/message-docs", tags=[TAG_DOCS],
+            summary="Liste de tous les messages OCPP documentés")
+async def list_message_docs(
+    profile:   Optional[str] = Query(None, description="Filtre par profil OCPP."),
+    direction: Optional[str] = Query(None, regex="^(CP→CSMS|CSMS→CP|both)$",
+                                      description="Filtre par direction."),
+):
+    async with AsyncSessionLocal() as db:
+        stmt = select(OcppMessageDoc)
+        if profile:
+            stmt = stmt.where(OcppMessageDoc.profile == profile)
+        if direction:
+            stmt = stmt.where(OcppMessageDoc.direction_norm == direction)
+        stmt = stmt.order_by(OcppMessageDoc.profile, OcppMessageDoc.name)
+        r = await db.execute(stmt)
+        docs = r.scalars().all()
+        return {
+            "count": len(docs),
+            "items": [_doc_to_dict(d) for d in docs],
+        }
+
+
+@router.get("/message-docs/{action}", tags=[TAG_DOCS],
+            summary="Documentation FR détaillée d'une action OCPP",
+            description="""
+Renvoie la doc complète :
+* `summary_fr` (1 phrase)
+* `description_fr` (2-4 phrases)
+* `fields_fr` ({champ: explication})
+* `triggered_by` (quand ce message est émis)
+* `cs_response` (réponse standard)
+* `section_norm` (référence dans la spec OCPP 1.6J)
+
+Source : seed statique `core/ocpp_message_docs_seed.py` basé sur OCPP 1.6J
+Edition 2 (juillet 2017, Open Charge Alliance).
+""")
+async def get_message_doc(action: str):
+    async with AsyncSessionLocal() as db:
+        r = await db.execute(
+            select(OcppMessageDoc).where(OcppMessageDoc.name == action)
+        )
+        doc = r.scalar_one_or_none()
+        if doc is None:
+            raise HTTPException(404,
+                f"Pas de documentation pour le message OCPP : {action}")
+        return _doc_to_dict(doc)

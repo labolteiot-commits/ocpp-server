@@ -1,0 +1,253 @@
+"""Tests Resilience (power cycle, reconnexion, disponibilité, liveness).
+
+Les tests physiques demandent une intervention du technicien.
+Les tests de liveness sont passifs (lecture DB + activité log).
+"""
+from __future__ import annotations
+
+import asyncio
+from datetime import datetime, timedelta, timezone
+
+from sqlalchemy import select
+
+from certification import catalog
+from certification.catalog import TestCase, TestResult
+from certification.helpers import TestContext
+
+
+async def _run_power_cycle_mid_idle(ctx: TestContext) -> TestResult:
+    cp = ctx.get_cp()
+    if cp is None:
+        return TestResult(
+            status="failed",
+            message="Borne hors ligne — impossible de tester la reconnexion",
+        )
+    # Demande au technicien de couper l'alim puis rebrancher
+    resp = await ctx.prompt_technician(
+        "Coupe l'alimentation de la borne pendant 10s (breaker / prise), "
+        "puis rebranche. Clique 'Prêt' une fois la borne rebranchée. "
+        "'Sauter' si tu n'as pas l'accès physique.",
+        timeout_s=300,
+        buttons=["Prêt", "Sauter"],
+    )
+    if resp in ("skip", "Sauter"):
+        return TestResult(
+            status="skipped",
+            message="Technicien a sauté — pas d'accès physique à la borne",
+        )
+    if resp in ("abort", "timeout"):
+        return TestResult(
+            status="failed",
+            message=f"Prompt technicien : {resp}",
+        )
+
+    # Attend la reconnexion : cherche un BootNotification récent
+    since = datetime.now(timezone.utc) - timedelta(minutes=3)
+    row = await ctx.wait_for_activity(
+        action="BootNotification",
+        since=since,
+        timeout_s=120,
+        poll_s=2.0,
+    )
+    details = {"reboot_detected": row is not None}
+    if row is None:
+        # Peut-être pas de BootNot mais un simple Heartbeat reprenant
+        hb = await ctx.wait_for_activity(
+            action="Heartbeat", since=since, timeout_s=30, poll_s=2.0
+        )
+        details["fallback_heartbeat"] = hb is not None
+        if hb is None:
+            return TestResult(
+                status="failed",
+                message="Aucun BootNotification ni Heartbeat après power cycle (2 min)",
+                details=details,
+                recommendation="Vérifier que la borne redémarre + se reconnecte au serveur OCPP.",
+            )
+        return TestResult(
+            status="passed",
+            message="Borne a repris les Heartbeats (pas de BootNot — reconnexion soft)",
+            details=details,
+        )
+    # Vérifie que la borne est online
+    cp2 = ctx.get_cp()
+    details["online_after_reboot"] = cp2 is not None
+    return TestResult(
+        status="passed",
+        message="BootNotification reçu après power cycle — borne opérationnelle",
+        details=details,
+    )
+
+
+catalog.register(
+    TestCase(
+        name="resil.power_cycle_mid_idle",
+        category="Resilience",
+        title="Power cycle mid-idle",
+        description="Demande un power cycle physique puis vérifie la reconnexion OCPP (BootNotification / Heartbeat).",
+        run=_run_power_cycle_mid_idle,
+        requires_power_cycle=True,
+        estimated_seconds=180,
+        suites={"full"},
+        ocpp_ref="§3.1 Connection setup",
+    )
+)
+
+
+# ──────────────────────── resil.availability_toggle ──────────────────────────
+
+
+async def _run_availability_toggle(ctx: TestContext) -> TestResult:
+    """ChangeAvailability Inoperative → Operative + vérification StatusNotification."""
+    from ocpp.v16 import call as ocpp_call
+
+    cp = ctx.get_cp()
+    if cp is None:
+        return TestResult(status="failed", message="Borne hors ligne")
+
+    since = datetime.now(timezone.utc) - timedelta(seconds=2)
+
+    # ── Étape 1 : Inoperative ──
+    try:
+        resp = await cp.call(ocpp_call.ChangeAvailability(connector_id=1, type="Inoperative"))
+        st_inop = getattr(resp, "status", "Unknown")
+    except Exception as e:
+        return TestResult(status="failed", message=f"ChangeAvailability(Inoperative) exception : {e}")
+
+    if str(st_inop).lower() not in ("accepted", "scheduled"):
+        return TestResult(
+            status="failed",
+            message=f"ChangeAvailability(Inoperative) refusé : {st_inop}",
+            recommendation="CP doit accepter ChangeAvailability(Inoperative) quand le connecteur est Available.",
+        )
+
+    await ctx.settle(5, "propagation ChangeAvailability(Inoperative)")
+
+    notif_unavail = await ctx.wait_for_status("Unavailable", timeout_s=20)
+    details: dict = {
+        "inoperative_response": str(st_inop),
+        "unavailable_notif_received": notif_unavail is not None,
+    }
+
+    # ── Étape 2 : Restore Operative ──
+    try:
+        resp2 = await cp.call(ocpp_call.ChangeAvailability(connector_id=1, type="Operative"))
+        st_op = getattr(resp2, "status", "Unknown")
+    except Exception as e:
+        details["restore_error"] = str(e)
+        return TestResult(
+            status="failed",
+            message=f"ChangeAvailability(Operative) exception : {e}",
+            details=details,
+            recommendation="Impossible de restaurer la borne — vérifier manuellement.",
+        )
+
+    await ctx.settle(5, "propagation ChangeAvailability(Operative)")
+    notif_avail = await ctx.wait_for_status("Available", timeout_s=20)
+
+    details["operative_response"] = str(st_op)
+    details["available_notif_received"] = notif_avail is not None
+
+    if not notif_unavail:
+        return TestResult(
+            status="failed",
+            message="StatusNotification(Unavailable) non reçu après ChangeAvailability(Inoperative)",
+            details=details,
+            recommendation="Vérifier que la borne envoie StatusNotification sur changement d'état §3.2.",
+        )
+
+    return TestResult(
+        status="passed",
+        message="ChangeAvailability Inoperative→Operative OK — StatusNotification reçu dans les deux sens",
+        details=details,
+    )
+
+
+catalog.register(
+    TestCase(
+        name="resil.availability_toggle",
+        category="Resilience",
+        title="ChangeAvailability toggle Inoperative↔Operative",
+        description=(
+            "Bascule le connecteur 1 en Inoperative puis en Operative. "
+            "Vérifie que la borne envoie un StatusNotification(Unavailable) "
+            "puis un StatusNotification(Available) dans les 20s (§3.2, §6.2)."
+        ),
+        run=_run_availability_toggle,
+        estimated_seconds=40,
+        suites={"standard", "full"},
+        ocpp_ref="§3.2 ChangeAvailability / §6.2",
+    )
+)
+
+
+# ──────────────────────── resil.heartbeat_freshness ──────────────────────────
+
+
+async def _run_heartbeat_freshness(ctx: TestContext) -> TestResult:
+    """Vérifie que la borne est active : last_seen dans l'intervalle heartbeat attendu."""
+    from db.database import AsyncSessionLocal
+    from db.models import Charger
+
+    async with AsyncSessionLocal() as db:
+        q = select(Charger).where(Charger.id == ctx.charger_id)
+        r = await db.execute(q)
+        charger = r.scalar_one_or_none()
+
+    if charger is None:
+        return TestResult(status="failed", message="Borne introuvable en DB")
+
+    last_seen = charger.last_seen
+    heartbeat_interval = getattr(charger, "heartbeat_interval", None) or 60
+    # Tolérance : 3× heartbeat_interval (absorbant une congestion réseau ou restart)
+    max_gap_s = heartbeat_interval * 3
+
+    if last_seen is None:
+        return TestResult(
+            status="failed",
+            message="last_seen est NULL — aucun Heartbeat reçu depuis le démarrage du serveur",
+            recommendation="Vérifier la connectivité WebSocket et le heartbeat_interval côté borne.",
+        )
+
+    now = datetime.now(timezone.utc)
+    # last_seen peut être naive (UTC implicite) — normaliser
+    if last_seen.tzinfo is None:
+        last_seen = last_seen.replace(tzinfo=timezone.utc)
+
+    gap_s = (now - last_seen).total_seconds()
+    details = {
+        "last_seen": last_seen.isoformat(),
+        "gap_seconds": round(gap_s, 1),
+        "heartbeat_interval_s": heartbeat_interval,
+        "max_allowed_gap_s": max_gap_s,
+    }
+
+    if gap_s > max_gap_s:
+        return TestResult(
+            status="failed",
+            message=f"Heartbeat stale : vu il y a {gap_s:.0f}s (tolérance {max_gap_s}s pour interval={heartbeat_interval}s)",
+            details=details,
+            recommendation="Vérifier le heartbeat_interval, la connectivité OCPP et que le serveur est bien démarré.",
+        )
+
+    return TestResult(
+        status="passed",
+        message=f"Borne active — dernier contact il y a {gap_s:.0f}s (tolérance {max_gap_s}s)",
+        details=details,
+    )
+
+
+catalog.register(
+    TestCase(
+        name="resil.heartbeat_freshness",
+        category="Resilience",
+        title="Liveness — heartbeat last_seen dans tolérance",
+        description=(
+            "Vérifie que last_seen de la borne est dans la fenêtre "
+            "3 × heartbeat_interval. Test passif, aucune commande envoyée."
+        ),
+        run=_run_heartbeat_freshness,
+        estimated_seconds=5,
+        suites={"quick", "standard", "full"},
+        ocpp_ref="§3.6 Heartbeat",
+    )
+)

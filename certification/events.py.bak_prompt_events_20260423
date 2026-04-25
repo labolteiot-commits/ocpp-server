@@ -1,0 +1,116 @@
+"""EventBus async pour le streaming WebSocket des runs de certification.
+
+Un bus par run_id : chaque abonné obtient sa propre ``asyncio.Queue`` ;
+les producteurs appellent ``publish(event)``, le hub duplique dans chaque
+queue. Les prompts technicien utilisent un dict de ``asyncio.Future`` pour
+attendre la réponse de l'humain.
+"""
+from __future__ import annotations
+
+import asyncio
+import time
+import uuid
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
+
+
+@dataclass
+class EventBus:
+    """Bus pub/sub simple, un par run_id.
+
+    - ``publish(event)`` : broadcast à tous les abonnés + ajout à l'historique.
+    - ``subscribe()`` : renvoie une ``asyncio.Queue`` qui recevra les futurs events.
+    - ``history`` : liste ordonnée de tous les events passés (pour replay
+      d'un client qui se connecte tard).
+    - ``pending_prompts`` : ``prompt_id → Future`` pour attendre la réponse
+      d'un prompt technicien.
+    """
+    run_id: str
+    history: List[dict] = field(default_factory=list)
+    subscribers: List[asyncio.Queue] = field(default_factory=list)
+    pending_prompts: Dict[str, asyncio.Future] = field(default_factory=dict)
+    closed: bool = False
+
+    async def publish(self, event: dict) -> None:
+        event = {**event, "ts": event.get("ts") or _now_iso()}
+        self.history.append(event)
+        for q in list(self.subscribers):
+            try:
+                q.put_nowait(event)
+            except asyncio.QueueFull:
+                pass
+
+    def subscribe(self) -> asyncio.Queue:
+        q: asyncio.Queue = asyncio.Queue(maxsize=1000)
+        # replay history
+        for ev in self.history:
+            try:
+                q.put_nowait(ev)
+            except asyncio.QueueFull:
+                break
+        self.subscribers.append(q)
+        return q
+
+    def unsubscribe(self, q: asyncio.Queue) -> None:
+        try:
+            self.subscribers.remove(q)
+        except ValueError:
+            pass
+
+    def new_prompt(self) -> str:
+        """Crée un prompt_id + Future associé, retourne le prompt_id."""
+        prompt_id = f"p_{uuid.uuid4().hex[:10]}"
+        loop = asyncio.get_event_loop()
+        self.pending_prompts[prompt_id] = loop.create_future()
+        return prompt_id
+
+    def resolve_prompt(self, prompt_id: str, response: str) -> bool:
+        fut = self.pending_prompts.get(prompt_id)
+        if fut is None or fut.done():
+            return False
+        fut.set_result(response)
+        return True
+
+    async def wait_prompt(self, prompt_id: str, timeout_s: float) -> str:
+        """Attend la réponse technicien, retourne 'done'/'skip'/'abort'/'timeout'."""
+        fut = self.pending_prompts.get(prompt_id)
+        if fut is None:
+            return "timeout"
+        try:
+            return await asyncio.wait_for(fut, timeout=timeout_s)
+        except asyncio.TimeoutError:
+            return "timeout"
+        finally:
+            self.pending_prompts.pop(prompt_id, None)
+
+    def close(self) -> None:
+        self.closed = True
+        for q in list(self.subscribers):
+            try:
+                q.put_nowait({"event": "run_closed"})
+            except Exception:
+                pass
+
+
+# ─────────────────────────── Registry global ────────────────────────────
+
+_BUSES: Dict[str, EventBus] = {}
+
+
+def get_bus(run_id: str, create: bool = False) -> Optional[EventBus]:
+    bus = _BUSES.get(run_id)
+    if bus is None and create:
+        bus = EventBus(run_id=run_id)
+        _BUSES[run_id] = bus
+    return bus
+
+
+def drop_bus(run_id: str) -> None:
+    bus = _BUSES.pop(run_id, None)
+    if bus is not None:
+        bus.close()
+
+
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()

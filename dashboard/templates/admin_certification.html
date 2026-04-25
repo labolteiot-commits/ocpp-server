@@ -1,0 +1,391 @@
+{% extends "_admin_base.html" %}
+{% block title %}Certification OCPP 1.6J &mdash; Admin{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h2>&#129514; Certification OCPP 1.6J Level 2</h2>
+  <p class="muted" style="margin-bottom:1rem">
+    Suite de tests automatis&eacute;s pour valider la conformit&eacute; d'une borne &agrave; la norme OCPP 1.6J.
+    Les prompts techniciens apparaissent en modal lorsque n&eacute;cessaire.
+  </p>
+
+  <div class="form-row">
+    <label for="charger_id">Borne</label>
+    <select id="charger_id"><option value="">Chargement...</option></select>
+  </div>
+  <div class="form-row">
+    <label for="suite">Suite</label>
+    <select id="suite">
+      <option value="quick">Quick &mdash; ~1 min (sans prompts)</option>
+      <option value="standard" selected>Standard &mdash; ~5 min (prompt v&eacute;hicule)</option>
+      <option value="full">Full &mdash; ~15 min (v&eacute;hicule + coupe alim)</option>
+    </select>
+  </div>
+  <div class="form-row">
+    <label for="technician_name">Technicien</label>
+    <input type="text" id="technician_name" placeholder="Prénom Nom">
+  </div>
+  <div class="form-row">
+    <label for="notes">Notes</label>
+    <input type="text" id="notes" placeholder="Contexte, numéro de série, etc.">
+  </div>
+  <div class="form-row">
+    <label></label>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="startRun()">&#9654;&nbsp; Lancer la certification</button>
+      <button class="btn btn-ghost" onclick="loadSuites()">Rafra&icirc;chir suites</button>
+      <button class="btn btn-ghost" onclick="loadHistory()">Historique</button>
+    </div>
+  </div>
+  <div id="suite_info" class="muted" style="margin-top:.75rem"></div>
+</div>
+
+<!-- Live run card -->
+<div class="card" id="run_card" style="display:none">
+  <h2>&#9201;&nbsp; Run en cours</h2>
+  <div class="form-row"><label>Run ID</label><span id="run_id_view" class="mono"></span></div>
+  <div class="form-row"><label>Statut</label><span id="run_status_view"></span></div>
+  <div class="form-row"><label>Progression</label>
+    <div style="width:100%">
+      <div style="background:#0f172a;border:1px solid #334155;border-radius:6px;height:14px;overflow:hidden">
+        <div id="run_progress_bar" style="background:#38bdf8;height:100%;width:0%;transition:width .3s"></div>
+      </div>
+      <div class="muted" id="run_progress_text" style="margin-top:4px">0 / 0</div>
+    </div>
+  </div>
+
+  <h3 style="margin-top:1rem">Résultats</h3>
+  <table id="results_table">
+    <thead>
+      <tr>
+        <th>Test</th>
+        <th>Catégorie</th>
+        <th>Statut</th>
+        <th>Message</th>
+        <th>Durée</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <div id="run_actions" style="margin-top:1rem;display:flex;gap:.5rem;flex-wrap:wrap">
+    <button class="btn btn-danger" onclick="cancelRun()">Annuler le run</button>
+    <a class="btn btn-success" id="report_link" href="#" target="_blank" style="display:none">Voir rapport HTML</a>
+    <a class="btn btn-ghost" id="report_json_link" href="#" target="_blank" style="display:none">Rapport JSON</a>
+  </div>
+</div>
+
+<!-- History card -->
+<div class="card" id="history_card" style="display:none">
+  <h2>&#128220;&nbsp; Historique des runs</h2>
+  <div class="filters">
+    <label>Filtrer par borne
+      <select id="filter_charger"><option value="">Toutes</option></select>
+    </label>
+    <button class="btn btn-ghost" onclick="loadHistory()">Rafra&icirc;chir</button>
+  </div>
+  <table id="history_table">
+    <thead>
+      <tr>
+        <th>Début</th>
+        <th>Borne</th>
+        <th>Suite</th>
+        <th>Technicien</th>
+        <th>Statut</th>
+        <th>Résultats</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<!-- Prompt modal -->
+<div id="prompt_modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:center;justify-content:center;padding:1rem">
+  <div class="card" style="max-width:520px;width:100%;margin:0;border:2px solid #38bdf8">
+    <h2 id="prompt_title">&#128065; Intervention technicien requise</h2>
+    <p id="prompt_message" style="margin:.75rem 0;line-height:1.5"></p>
+    <div class="muted" id="prompt_timeout">Timeout : --s</div>
+    <div id="prompt_buttons" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:1rem"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentRunId = null;
+let ws = null;
+let currentPrompt = null;
+let promptTimer = null;
+let allTests = [];
+
+async function loadChargers() {
+  const sel = document.getElementById('charger_id');
+  const f = document.getElementById('filter_charger');
+  try {
+    const r = await api('GET', '/api/chargers/');
+    sel.innerHTML = '';
+    f.innerHTML = '<option value="">Toutes</option>';
+    const list = (r || []);
+    if (list.length === 0) {
+      sel.innerHTML = '<option value="">Aucune borne declaree</option>';
+      return;
+    }
+    list.forEach(c => {
+      const cid = c.id || c.charger_id;
+      const st = c.status || '';
+      const opt = document.createElement('option');
+      opt.value = cid;
+      opt.textContent = cid + (st ? ` (${st})` : '');
+      sel.appendChild(opt);
+      const opt2 = document.createElement('option');
+      opt2.value = cid;
+      opt2.textContent = cid;
+      f.appendChild(opt2);
+    });
+    console.log('[certif] loadChargers OK', list.length, 'bornes');
+  } catch(e) {
+    sel.innerHTML = '<option value="">Erreur chargement bornes</option>';
+    console.error('[certif] loadChargers echec', e);
+    showToast('Chargement bornes : ' + e.message, true);
+  }
+}
+
+async function loadSuites() {
+  try {
+    const r = await api('GET', '/api/certification/suites');
+    const info = document.getElementById('suite_info');
+    const rows = (r.suites || []).map(s => {
+      // Sprint 37 — fourchette réaliste : estimé base (min) et +40% pour temps de réaction
+      // technicien (plug véhicule, coupe alim) quand la suite en contient.
+      const baseMin = Math.max(1, Math.round(s.estimated_seconds / 60));
+      const hasHuman = s.requires_vehicle || s.requires_power_cycle;
+      const maxMin = hasHuman ? Math.round(s.estimated_seconds * 1.4 / 60) : baseMin;
+      const rangeTxt = (maxMin > baseMin) ? `${baseMin}&ndash;${maxMin} min` : `~${baseMin} min`;
+      return `<code class="inline">${escapeHtml(s.key)}</code> : ${s.test_count} tests, ${rangeTxt}` +
+        (s.requires_power_cycle ? ' &mdash; <span class="badge badge-amber">coupe alim</span>' : '') +
+        (s.requires_vehicle && !s.requires_power_cycle ? ' &mdash; <span class="badge badge-amber">v&eacute;hicule</span>' : '');
+    });
+    info.innerHTML = rows.join(' &middot; ');
+  } catch(e) {
+    document.getElementById('suite_info').textContent = 'Suites : ' + e.message;
+  }
+}
+
+async function loadTests() {
+  try {
+    const r = await api('GET', '/api/certification/tests');
+    allTests = r.tests || [];
+  } catch(e) { /* no-op */ }
+}
+
+async function startRun() {
+  const charger_id = document.getElementById('charger_id').value;
+  const suite = document.getElementById('suite').value;
+  const technician_name = document.getElementById('technician_name').value.trim();
+  const notes = document.getElementById('notes').value.trim();
+  if (!charger_id) { showToast('Sélectionne une borne', true); return; }
+
+  try {
+    const r = await api('POST', '/api/certification/runs', {
+      charger_id, suite,
+      technician_name: technician_name || null,
+      notes: notes || null,
+    });
+    currentRunId = r.run_id;
+    document.getElementById('run_id_view').textContent = r.run_id;
+    document.getElementById('run_status_view').innerHTML = '<span class="badge badge-blue">running</span>';
+    document.getElementById('run_card').style.display = 'block';
+    document.getElementById('results_table').querySelector('tbody').innerHTML = '';
+    document.getElementById('run_progress_bar').style.width = '0%';
+    document.getElementById('run_progress_text').textContent = '0 / 0';
+    document.getElementById('report_link').style.display = 'none';
+    document.getElementById('report_json_link').style.display = 'none';
+    showToast('Run démarré : ' + r.run_id);
+    connectWS(r.run_id);
+  } catch(e) {
+    showToast('Démarrage : ' + e.message, true);
+  }
+}
+
+function connectWS(runId) {
+  if (ws) { try { ws.close(); } catch(e) {} ws = null; }
+  const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
+  const url = `${scheme}://${location.host}/ws/certification/${runId}`;
+  ws = new WebSocket(url);
+  ws.onmessage = (evt) => {
+    try {
+      const msg = JSON.parse(evt.data);
+      handleEvent(msg);
+    } catch(e) { console.error('WS parse', e); }
+  };
+  ws.onerror = (e) => console.error('WS err', e);
+  ws.onclose = () => { ws = null; };
+}
+
+function handleEvent(msg) {
+  const type = msg.event || msg.type;
+  if (type === 'ping') return;
+  if (type === 'run_started') {
+    const total = msg.total || (msg.tests ? msg.tests.length : 0);
+    document.getElementById('run_progress_text').textContent = `0 / ${total}`;
+  }
+  if (type === 'progress') {
+    // Sprint 37 — runner.py publie `completed` ; tolère aussi `done` pour compat future.
+    const done = (msg.completed != null ? msg.completed : (msg.done || 0));
+    const total = msg.total || 0;
+    const pct = total ? Math.round(100 * done / total) : 0;
+    document.getElementById('run_progress_bar').style.width = pct + '%';
+    document.getElementById('run_progress_text').textContent = `${done} / ${total}`;
+  }
+  if (type === 'test_started') {
+    appendRow({ name: msg.name, category: msg.category, status: 'running', message: '', duration_s: null });
+  }
+  if (type === 'test_passed' || type === 'test_failed' || type === 'test_skipped') {
+    updateRow(msg.name, {
+      status: msg.result_status || type.replace('test_', ''),
+      message: msg.message || '',
+      duration_s: msg.duration_s || null,
+    });
+  }
+  if (type === 'run_finished') {
+    document.getElementById('run_status_view').innerHTML =
+      `<span class="badge ${msg.status==='completed'?'badge-green':'badge-red'}">${msg.status||'finished'}</span>`;
+    const link = document.getElementById('report_link');
+    link.href = `/api/certification/runs/${currentRunId}/report`;
+    link.style.display = 'inline-block';
+    const jlink = document.getElementById('report_json_link');
+    jlink.href = `/api/certification/runs/${currentRunId}/report.json`;
+    jlink.style.display = 'inline-block';
+    showToast(`Run terminé : ${msg.passed||0} OK, ${msg.failed||0} KO, ${msg.skipped||0} skipped`);
+  }
+  if (type === 'prompt' || type === 'prompt_technician') {
+    showPrompt(msg);
+  }
+  if (type === 'prompt_resolved' || type === 'prompt_timeout') {
+    hidePrompt();
+  }
+}
+
+function appendRow(r) {
+  const tbody = document.getElementById('results_table').querySelector('tbody');
+  const tr = document.createElement('tr');
+  tr.dataset.name = r.name;
+  tr.innerHTML = `
+    <td class="mono">${escapeHtml(r.name)}</td>
+    <td>${escapeHtml(r.category || '')}</td>
+    <td><span class="badge badge-blue">running</span></td>
+    <td>${escapeHtml(r.message || '')}</td>
+    <td>-</td>`;
+  tbody.appendChild(tr);
+}
+
+function updateRow(name, patch) {
+  const tbody = document.getElementById('results_table').querySelector('tbody');
+  const tr = tbody.querySelector(`tr[data-name="${name}"]`);
+  if (!tr) { appendRow({ name, ...patch }); return; }
+  const cells = tr.children;
+  const st = patch.status || 'unknown';
+  const badge = st === 'passed' ? 'badge-green'
+             : st === 'failed' ? 'badge-red'
+             : st === 'skipped' ? 'badge-grey' : 'badge-blue';
+  cells[2].innerHTML = `<span class="badge ${badge}">${st}</span>`;
+  cells[3].textContent = patch.message || '';
+  cells[4].textContent = patch.duration_s != null ? patch.duration_s.toFixed(1) + 's' : '-';
+}
+
+function showPrompt(msg) {
+  currentPrompt = msg;
+  document.getElementById('prompt_message').textContent = msg.message || '';
+  const btns = document.getElementById('prompt_buttons');
+  btns.innerHTML = '';
+  (msg.buttons || ['OK']).forEach(label => {
+    const b = document.createElement('button');
+    b.className = 'btn btn-primary';
+    b.textContent = label;
+    b.onclick = () => respondPrompt(label);
+    btns.appendChild(b);
+  });
+  const to = document.getElementById('prompt_timeout');
+  if (msg.timeout_s) {
+    let remaining = msg.timeout_s;
+    to.textContent = `Timeout : ${remaining}s`;
+    if (promptTimer) clearInterval(promptTimer);
+    promptTimer = setInterval(() => {
+      remaining -= 1;
+      if (remaining <= 0) { clearInterval(promptTimer); promptTimer = null; }
+      to.textContent = `Timeout : ${remaining}s`;
+    }, 1000);
+  } else { to.textContent = ''; }
+  document.getElementById('prompt_modal').style.display = 'flex';
+}
+
+function hidePrompt() {
+  document.getElementById('prompt_modal').style.display = 'none';
+  if (promptTimer) { clearInterval(promptTimer); promptTimer = null; }
+  currentPrompt = null;
+}
+
+async function respondPrompt(response) {
+  if (!currentPrompt || !currentRunId) { hidePrompt(); return; }
+  try {
+    await api('POST', `/api/certification/runs/${currentRunId}/prompt`, {
+      prompt_id: currentPrompt.prompt_id,
+      response: response,
+    });
+    hidePrompt();
+  } catch(e) {
+    showToast('Réponse prompt : ' + e.message, true);
+  }
+}
+
+async function cancelRun() {
+  if (!currentRunId) return;
+  if (!confirm('Annuler le run en cours ?')) return;
+  try {
+    await api('POST', `/api/certification/runs/${currentRunId}/cancel`);
+    showToast('Annulation demandée');
+  } catch(e) {
+    showToast('Annulation : ' + e.message, true);
+  }
+}
+
+async function loadHistory() {
+  document.getElementById('history_card').style.display = 'block';
+  const charger = document.getElementById('filter_charger').value;
+  const url = '/api/certification/runs?limit=50' + (charger ? '&charger_id=' + encodeURIComponent(charger) : '');
+  try {
+    const r = await api('GET', url);
+    const rows = r.runs || [];
+    const tbody = document.getElementById('history_table').querySelector('tbody');
+    tbody.innerHTML = '';
+    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty">Aucun run</td></tr>'; return; }
+    rows.forEach(run => {
+      const tr = document.createElement('tr');
+      const badge = run.status === 'completed' ? 'badge-green'
+                 : run.status === 'cancelled' ? 'badge-grey'
+                 : run.status === 'failed' ? 'badge-red' : 'badge-blue';
+      const p = run.passed || 0, f = run.failed || 0, s = run.skipped || 0;
+      tr.innerHTML = `
+        <td class="mono" style="font-size:.75rem">${fmtDate(run.started_at)}</td>
+        <td>${escapeHtml(run.charger_id || '')}</td>
+        <td>${escapeHtml(run.suite || '')}</td>
+        <td>${escapeHtml(run.technician_name || '-')}</td>
+        <td><span class="badge ${badge}">${escapeHtml(run.status || '')}</span></td>
+        <td><span class="badge badge-green">${p}</span> <span class="badge badge-red">${f}</span> <span class="badge badge-grey">${s}</span></td>
+        <td class="actions-cell">
+          <a class="btn btn-ghost" href="/api/certification/runs/${run.run_id}/report" target="_blank">Rapport</a>
+          <a class="btn btn-ghost" href="/api/certification/runs/${run.run_id}/report.json" target="_blank">JSON</a>
+        </td>`;
+      tbody.appendChild(tr);
+    });
+  } catch(e) {
+    showToast('Historique : ' + e.message, true);
+  }
+}
+
+loadChargers();
+loadSuites();
+loadTests();
+</script>
+{% endblock %}

@@ -1,0 +1,191 @@
+{% extends "_admin_base.html" %}
+{% set active = 'drifts' %}
+{% block title %}Admin — Config drifts{% endblock %}
+{% block content %}
+<h2>Config drifts (anti-override cloud fabricant)</h2>
+<p class="muted" style="margin-bottom:1rem">Liste des clés dont la valeur observée sur la borne diffère de la valeur attendue serveur. Un drift indique qu'un cloud fabricant (TechnoVE, Grizzl-E) a rebasculé la config dans notre dos.</p>
+
+<!-- Sprint 32 Volet 1 — Trigger detection SupportedFeatureProfiles -->
+<div class="card" style="margin-bottom:1rem">
+  <div class="filters">
+    <h3 style="margin:0;flex:1">Détection capabilities (SupportedFeatureProfiles)</h3>
+    <label>Borne :
+      <select id="caps_charger">
+        <option value="">-- choisir --</option>
+      </select>
+    </label>
+    <button class="btn btn-primary" onclick="detectCapabilities()">Détecter les capabilities</button>
+    <button class="btn btn-ghost" onclick="detectCapabilitiesBulk()">Toutes les connectées</button>
+  </div>
+  <p class="muted" style="margin:0.5rem 0 0">Force un <code class="inline">GetConfiguration(SupportedFeatureProfiles)</code> immédiat et persiste dans <code class="inline">chargers.supported_profiles</code>. Utile quand la borne était déjà connectée au boot serveur ou pour revérifier.</p>
+  <div id="caps_result" style="margin-top:0.75rem"></div>
+</div>
+
+<div class="card">
+  <div class="filters">
+    <h3 style="margin:0;flex:1">Drifts actifs</h3>
+    <label>Borne :
+      <select id="f_charger" onchange="loadAll()">
+        <option value="">Toutes</option>
+      </select>
+    </label>
+    <label><input type="checkbox" id="f_only_drift" checked onchange="loadAll()"> drift seulement</label>
+    <button class="btn btn-ghost" onclick="loadAll()">Rafraîchir</button>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Borne</th><th>Clé</th><th>Expected</th><th>Observed</th>
+        <th>Drifts</th><th>Dernier drift</th><th>Dernier heal</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="drifts_body"><tr><td colspan="8" class="empty">Chargement…</td></tr></tbody>
+  </table>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+let CHARGERS = [];
+
+async function loadChargers() {
+  try {
+    const data = await api('GET', '/api/chargers/');
+    CHARGERS = (data.chargers || data || []).map(c => c.id || c.charger_id || c);
+    const sel = document.getElementById('f_charger');
+    sel.innerHTML = '<option value="">Toutes</option>' +
+      CHARGERS.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+    // Sprint 32 Volet 1 — peupler aussi le dropdown caps detection
+    const capsSel = document.getElementById('caps_charger');
+    if (capsSel) {
+      capsSel.innerHTML = '<option value="">-- choisir --</option>' +
+        CHARGERS.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+    }
+  } catch(e) { /* best-effort */ }
+}
+
+// Sprint 32 Volet 1 — Détection forcée des capabilities
+async function detectCapabilities() {
+  const cid = document.getElementById('caps_charger').value;
+  const box = document.getElementById('caps_result');
+  if (!cid) { box.innerHTML = '<div class="muted">Sélectionnez une borne.</div>'; return; }
+  box.innerHTML = '<div class="muted">Détection en cours…</div>';
+  try {
+    const data = await api('POST', '/api/commands/detect-capabilities/' + encodeURIComponent(cid));
+    const profiles = data.supported_profiles || [];
+    const badges = profiles.length
+      ? profiles.map(p => `<span class="badge badge-green" style="margin:2px">${escapeHtml(p)}</span>`).join(' ')
+      : '<span class="badge badge-amber">aucun</span>';
+    box.innerHTML = `
+      <div><strong>${escapeHtml(cid)}</strong> — ${profiles.length} profil(s) détecté(s) à ${fmtDate(data.detected_at)}</div>
+      <div style="margin-top:0.5rem">${badges}</div>`;
+    showToast('Capabilities détectées pour ' + cid);
+  } catch(e) {
+    box.innerHTML = `<div class="badge badge-red">Erreur: ${escapeHtml(e.message)}</div>`;
+    showToast('Erreur détection: ' + e.message, true);
+  }
+}
+
+async function detectCapabilitiesBulk() {
+  const box = document.getElementById('caps_result');
+  box.innerHTML = '<div class="muted">Détection bulk en cours…</div>';
+  try {
+    const data = await api('POST', '/api/commands/detect-capabilities');
+    const rows = (data.results || []).map(r => {
+      if (r.ok) {
+        const profs = (r.supported_profiles || []).map(p => `<span class="badge badge-green" style="margin:2px">${escapeHtml(p)}</span>`).join(' ');
+        return `<tr><td class="mono">${escapeHtml(r.charger_id)}</td><td>${profs || '-'}</td></tr>`;
+      } else {
+        return `<tr><td class="mono">${escapeHtml(r.charger_id)}</td><td><span class="badge badge-red">erreur: ${escapeHtml(r.error || 'inconnue')}</span></td></tr>`;
+      }
+    }).join('');
+    box.innerHTML = `<table><thead><tr><th>Borne</th><th>Profils détectés</th></tr></thead><tbody>${rows || '<tr><td colspan="2" class="empty">Aucune borne connectée</td></tr>'}</tbody></table>
+      <div class="muted" style="margin-top:0.5rem">Détecté à ${fmtDate(data.detected_at)} — ${data.count} borne(s)</div>`;
+    showToast(data.count + ' borne(s) détectée(s)');
+  } catch(e) {
+    box.innerHTML = `<div class="badge badge-red">Erreur: ${escapeHtml(e.message)}</div>`;
+    showToast('Erreur bulk: ' + e.message, true);
+  }
+}
+
+async function loadDrifts() {
+  const cid = document.getElementById('f_charger').value;
+  const onlyDrift = document.getElementById('f_only_drift').checked;
+  const tb = document.getElementById('drifts_body');
+  try {
+    let rows = [];
+    if (cid) {
+      const data = await api('GET', '/api/commands/config-snapshot/' + encodeURIComponent(cid));
+      rows = (data.keys || []).map(k => Object.assign({ charger_id: cid }, k));
+    } else {
+      // Pas de filtre borne : on utilise /config-drifts (tous drifts count>0)
+      // et on complète avec config-snapshot borne par borne si onlyDrift=false
+      if (onlyDrift) {
+        const data = await api('GET', '/api/commands/config-drifts');
+        rows = (data.drifts || []).map(d => ({
+          charger_id: d.charger_id, key: d.key,
+          expected_value: d.expected_value, observed_value: d.observed_value,
+          drift_count: d.drift_count, last_drift_at: d.last_drift_at,
+          last_heal_at: d.last_heal_at, drift: true,
+        }));
+      } else {
+        // Boucle sur toutes les bornes
+        for (const c of CHARGERS) {
+          try {
+            const data = await api('GET', '/api/commands/config-snapshot/' + encodeURIComponent(c));
+            for (const k of (data.keys || [])) rows.push(Object.assign({ charger_id: c }, k));
+          } catch(e) {}
+        }
+      }
+    }
+    if (onlyDrift) rows = rows.filter(r => r.drift || (r.drift_count || 0) > 0);
+    if (rows.length === 0) {
+      tb.innerHTML = '<tr><td colspan="8" class="empty">Aucun drift</td></tr>';
+      return;
+    }
+    tb.innerHTML = rows.map(r => {
+      const driftBadge = r.drift
+        ? '<span class="badge badge-red">drift</span>'
+        : (r.drift_count > 0 ? '<span class="badge badge-amber">historique</span>' : '<span class="badge badge-green">OK</span>');
+      return `<tr>
+        <td class="mono">${escapeHtml(r.charger_id)}</td>
+        <td class="mono"><code class="inline">${escapeHtml(r.key)}</code></td>
+        <td class="mono">${escapeHtml(r.expected_value || '-')}</td>
+        <td class="mono">${escapeHtml(r.observed_value || '-')} ${driftBadge}</td>
+        <td class="muted">${r.drift_count || 0}</td>
+        <td class="muted">${fmtDate(r.last_drift_at)}</td>
+        <td class="muted">${fmtDate(r.last_heal_at)}</td>
+        <td class="actions-cell">
+          ${r.observed_value ? `<button class="btn btn-warn" onclick="acceptObserved('${escapeHtml(r.charger_id)}', '${escapeHtml(r.key)}', '${escapeHtml(r.observed_value)}')">Accepter observed</button>` : ''}
+          ${r.expected_value ? `<button class="btn btn-primary" onclick="pushExpected('${escapeHtml(r.charger_id)}', '${escapeHtml(r.key)}', '${escapeHtml(r.expected_value)}')">Re-push expected</button>` : ''}
+        </td>
+      </tr>`;
+    }).join('');
+  } catch(e) {
+    tb.innerHTML = '<tr><td colspan="8" class="empty">Erreur: ' + escapeHtml(e.message) + '</td></tr>';
+  }
+}
+
+async function acceptObserved(charger_id, key, observed) {
+  if (!confirm(`Accepter la valeur observée comme expected pour ${charger_id}/${key} ?\n\nNouvelle expected = ${observed}`)) return;
+  try {
+    await api('POST', '/api/commands/config-expected', { charger_id, key, value: observed });
+    showToast('Expected = observed pour ' + key);
+    loadDrifts();
+  } catch(e) { showToast('Erreur: ' + e.message, true); }
+}
+async function pushExpected(charger_id, key, expected) {
+  if (!confirm(`Re-pousser expected vers la borne ${charger_id}/${key} = ${expected} ?`)) return;
+  try {
+    await api('POST', '/api/commands/config-expected', { charger_id, key, value: expected });
+    showToast('Expected re-poussé pour ' + key);
+    loadDrifts();
+  } catch(e) { showToast('Erreur: ' + e.message, true); }
+}
+
+async function loadAll() {
+  await loadDrifts();
+}
+
+(async () => { await loadChargers(); await loadDrifts(); })();
+</script>
+{% endblock %}

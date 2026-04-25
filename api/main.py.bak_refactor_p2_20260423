@@ -1,0 +1,282 @@
+# api/main.py
+"""
+Factory de l'application FastAPI — Serveur OCPP 1.6J résidentiel.
+
+Sprint 31 — Refonte OpenAPI : métadonnées enrichies, tags par profil OCPP,
+description Markdown évocatrice. Voir api/routes/commands.py pour les
+constantes TAG_* utilisées par chaque endpoint.
+"""
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from fastapi import Depends, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+
+from config import settings
+from core.logging import log
+
+# Routes
+from api.routes.chargers  import router as chargers_router
+from api.routes.commands  import router as commands_router
+from api.routes.sessions  import router as sessions_router
+from api.routes.dashboard import router as dashboard_router
+from api.websocket        import router as websocket_router   # api/websocket.py, pas api/routes/
+from api.routes.obd2      import router as obd2_router
+# Sprint 29 Volet A — whitelist idTags
+from api.routes.tags      import router as tags_router
+# Sprint 30 Volet B — pages admin UI (tags / config-drifts / firmware)
+from api.routes.admin_ui  import router as admin_ui_router
+# Sprint 29 Volet C — HTTP Basic auth (mode ouvert si OCPP_DASH_USER/PASS absents)
+from api.security         import require_auth
+
+if TYPE_CHECKING:
+    from core.ocpp_server import OCPPServer
+    from core.scheduler   import ChargingScheduler
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Sprint 31 — OpenAPI tags_metadata : ordre + descriptions par profil OCPP
+# Les emojis matchent ceux de api/routes/commands.py (TAG_*).
+# ─────────────────────────────────────────────────────────────────────
+TAGS_METADATA = [
+    {
+        "name": "🔌 Core Profile",
+        "description": (
+            "**OCPP 1.6J §4 — Core profile.**  \n"
+            "Opérations de base obligatoires : démarrage/arrêt de transaction, "
+            "lecture/écriture de configuration, déverrouillage de connecteur, "
+            "réinitialisation, effacement du cache d'authentification.\n\n"
+            "Endpoints utilisés au quotidien pour piloter une borne."
+        ),
+    },
+    {
+        "name": "⚡ Smart Charging Profile",
+        "description": (
+            "**OCPP 1.6J §6 — Smart Charging profile.**  \n"
+            "Limitation dynamique du courant via `SetChargingProfile` "
+            "(TxProfile session, TxDefaultProfile, ChargePointMaxProfile). "
+            "Persistance Sprint 23 A9 + replay au boot. "
+            "Effacement via `ClearChargingProfile` (Sprint 24 A8) → snapshot "
+            "marqué `expired_at`."
+        ),
+    },
+    {
+        "name": "🛡️ Reservation Profile",
+        "description": (
+            "**OCPP 1.6J §6 — Reservation profile.**  \n"
+            "Réservation d'un connecteur pour un id_tag jusqu'à une date "
+            "d'expiration. Sprint 28 A7 : table `reservations` persistée, "
+            "auto-expire 60s, consume sur StartTransaction (passe à `Used`)."
+        ),
+    },
+    {
+        "name": "🔧 Firmware Management Profile",
+        "description": (
+            "**OCPP 1.6J §6 — FirmwareManagement profile.**  \n"
+            "Mise à jour firmware borne via `UpdateFirmware` (Sprint 30 A) + "
+            "récupération de logs diagnostics via `GetDiagnostics`. "
+            "Statuts de progression `FirmwareStatusNotification` et "
+            "`DiagnosticsStatusNotification` persistés en DB. Complétion "
+            "automatique à la prochaine `BootNotification`."
+        ),
+    },
+    {
+        "name": "🎯 Remote Trigger Profile",
+        "description": (
+            "**OCPP 1.6J §6.18 — RemoteTrigger profile.**  \n"
+            "Demande à la borne d'émettre spontanément un message "
+            "(`Heartbeat`, `MeterValues`, `StatusNotification`, "
+            "`BootNotification`, `DiagnosticsStatusNotification`, "
+            "`FirmwareStatusNotification`). Utile pour forcer un rafraîchissement."
+        ),
+    },
+    {
+        "name": "📋 Local Auth List Management Profile",
+        "description": (
+            "**OCPP 1.6J §6.11 / §6.20 — LocalAuthListManagement profile.**  \n"
+            "Synchronisation de la liste blanche idTag locale de la borne : "
+            "`GetLocalListVersion` (lire la version courante) et "
+            "`SendLocalList` (Differential ou Full update).\n\n"
+            "Sprint 31 — endpoints exposés ; la liste source est gérée par "
+            "la table `ocpp_tags` (Sprint 29 Volet A)."
+        ),
+    },
+    {
+        "name": "🔁 Data Transfer Profile",
+        "description": (
+            "**OCPP 1.6J §6.6 — DataTransfer.**  \n"
+            "Canal vendor-specific bidirectionnel : Server→CP "
+            "(`POST /data-transfer/send`) et CP→Server (handler "
+            "`on_data_transfer`). Toutes les trames sont auditées dans "
+            "`data_transfer_logs` (Sprint 28 A7)."
+        ),
+    },
+    {
+        "name": "🔐 Anti-Override Drift (extension)",
+        "description": (
+            "**Extension propriétaire — Sprints 29 Volet D & 30 C.**  \n"
+            "Détection des dérives de configuration borne (cloud manufacturier "
+            "qui override les clés OCPP) et des dérives de courant en temps "
+            "réel (observed > expected sur MeterValues). Auto-heal via "
+            "`ChangeConfiguration` ou `SetChargingProfile` selon le cas."
+        ),
+    },
+    {
+        "name": "🛠️ Diagnostics serveur (extension)",
+        "description": (
+            "**Diagnostics internes du serveur OCPP** — état des sessions "
+            "WebSocket, statistiques par borne. Pas un message OCPP standard."
+        ),
+    },
+    {
+        "name": "Bornes",
+        "description": (
+            "Inventaire et configuration des bornes connues du serveur "
+            "(table `chargers`). CRUD plus paramètres réseau / heartbeat / "
+            "auth WebSocket."
+        ),
+    },
+    {
+        "name": "Sessions",
+        "description": (
+            "Historique des sessions de recharge (transactions OCPP "
+            "`StartTransaction`/`StopTransaction`). Énergie livrée, durée, "
+            "état terminal."
+        ),
+    },
+    {
+        "name": "Whitelist idTags",
+        "description": (
+            "**Sprint 29 Volet A** — whitelist serveur des idTags acceptés "
+            "à l'`Authorize` et au `StartTransaction`. Tant que la table "
+            "`ocpp_tags` est vide → tous accepted (rétrocompat). Dès la "
+            "première ligne, devient enforcing."
+        ),
+    },
+    {
+        "name": "OBD2 & Prédictif",
+        "description": (
+            "Intégration projet télémétrie VE (predictif OBD2). Hors scope "
+            "OCPP standard — utilisé par le scheduler pour aligner la "
+            "recharge sur les besoins prédits."
+        ),
+    },
+    {
+        "name": "Admin UI",
+        "description": (
+            "Pages HTML d'administration (tags / config-drifts / firmware). "
+            "Protégées par HTTP Basic auth si `OCPP_DASH_USER/PASS` configurés."
+        ),
+    },
+]
+
+
+def create_app(
+    ocpp_server: "OCPPServer",
+    scheduler:   "ChargingScheduler | None" = None,
+) -> FastAPI:
+
+    app = FastAPI(
+        title       = "⚡ Serveur OCPP 1.6J — API",
+        version     = "1.6.31",
+        summary     = "Serveur OCPP 1.6J universel — pilotage de bornes de recharge VE conformes à la norme.",
+        description = (
+            "## API du serveur OCPP\n\n"
+            "Cette API expose toutes les commandes que le serveur peut envoyer aux "
+            "**bornes de recharge** conformes à la norme **OCPP 1.6J** "
+            "(Open Charge Alliance), regroupées par profil OCPP standard.\n\n"
+            "### Profils OCPP exposés\n\n"
+            "- 🔌 **Core** — démarrage/arrêt de transaction, configuration, reset, déverrouillage.\n"
+            "- ⚡ **Smart Charging** — limitation dynamique du courant via profils.\n"
+            "- 🛡️ **Reservation** — réservation d'un connecteur pour un id_tag.\n"
+            "- 🔧 **Firmware Management** — mise à jour firmware + diagnostics.\n"
+            "- 🎯 **Remote Trigger** — demander à la borne d'émettre un message.\n"
+            "- 📋 **Local Auth List Management** — synchronisation de la liste blanche.\n"
+            "- 🔁 **Data Transfer** — canal vendor-specific bidirectionnel.\n\n"
+            "### Comment utiliser cette API\n\n"
+            "Trois interfaces sont disponibles :\n\n"
+            "- 🚀 **[API Explorer](/api-explorer)** — interface dynamique avec onglets par profil "
+            "et sélection automatique de la borne cible (recommandée).\n"
+            "- 📘 **[Swagger UI](/docs)** — documentation interactive standard FastAPI.\n"
+            "- 📖 **[ReDoc](/redoc)** — documentation lecture-seule, présentation par sections.\n\n"
+            "### Référence\n\n"
+            "- 📚 [Norme OCPP 1.6J — Open Charge Alliance]"
+            "(https://www.openchargealliance.org/protocols/ocpp-16/)\n"
+        ),
+        license_info = {
+            "name": "Internal — usage privé",
+        },
+        openapi_tags = TAGS_METADATA,
+        docs_url     = "/docs",
+        redoc_url    = None,
+    )
+
+    # ── CORS ────────────────────────────────────────────────
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins     = settings.api.allowed_origins,
+        allow_credentials = True,
+        allow_methods     = ["*"],
+        allow_headers     = ["*"],
+    )
+
+    # ── État global ─────────────────────────────────────────
+    app.state.ocpp_server = ocpp_server
+    app.state.scheduler   = scheduler
+
+    # ── Routers ─────────────────────────────────────────────
+    # Sprint 29 Volet C : require_auth appliqué aux routers admin (dashboard,
+    # commands, tags). WebSocket (api.websocket) et routes consommées par
+    # les bornes OCPP ne sont PAS protégées (bornes passent par WS port 9000
+    # avec leur propre Basic auth dans core.ocpp_server._authenticate).
+    #
+    # Sprint 31 : commands_router n'a plus de `tags=[...]` global — chaque
+    # endpoint porte son propre tag de profil OCPP (cf. TAG_* dans commands.py).
+    app.include_router(dashboard_router,  prefix="", dependencies=[Depends(require_auth)])
+    app.include_router(websocket_router,  prefix="")
+    app.include_router(chargers_router,   prefix="/api/chargers",  tags=["Bornes"],            dependencies=[Depends(require_auth)])
+    app.include_router(commands_router,   prefix="/api/commands",                              dependencies=[Depends(require_auth)])
+    app.include_router(sessions_router,   prefix="/api/sessions",  tags=["Sessions"],          dependencies=[Depends(require_auth)])
+    app.include_router(obd2_router,       prefix="/api/obd2",      tags=["OBD2 & Prédictif"])
+    app.include_router(tags_router,       prefix="/api/tags",      tags=["Whitelist idTags"])
+    # Sprint 30 Volet B — pages admin (HTML), auth HTTP Basic
+    app.include_router(admin_ui_router,   prefix="",               tags=["Admin UI"],          dependencies=[Depends(require_auth)])
+
+    # ── ReDoc custom (Sprint 31) ─────────────────────────────
+    # Le chemin natif FastAPI chargeait `redoc@next` depuis jsdelivr qui
+    # plantait chez certains usagers. On pointe vers une version stable
+    # pinnée + script servi depuis unpkg (fallback si jsdelivr bloqué).
+    @app.get("/redoc", include_in_schema=False, response_class=HTMLResponse)
+    async def custom_redoc():
+        return """<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>API OCPP — ReDoc</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgo=" />
+  <style>body{margin:0;padding:0;}</style>
+</head>
+<body>
+  <redoc spec-url="/openapi.json"
+         theme='{"colors":{"primary":{"main":"#0ea5e9"}}}'
+         expand-responses="200,201"
+         hide-download-button="false"
+         sort-tags-alphabetically="false"
+         path-in-middle-panel="true"></redoc>
+  <script src="https://cdn.redoc.ly/redoc/v2.1.5/bundles/redoc.standalone.js"></script>
+</body>
+</html>
+"""
+
+    @app.on_event("startup")
+    async def on_startup():
+        log.info("API démarrée", port=settings.api.port)
+
+    @app.on_event("shutdown")
+    async def on_shutdown():
+        log.info("API arrêtée")
+
+    return app

@@ -1,0 +1,19 @@
+{% extends "_admin_base.html" %}
+{% block title %}Rapport certification {{ run_id }}{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h2>&#128196; Rapport de certification</h2>
+  <p class="muted" style="margin-bottom:.75rem">Run ID : <code class="inline">{{ run_id }}</code></p>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem">
+    <a class="btn btn-primary" href="/api/certification/runs/{{ run_id }}/report" target="_blank">Ouvrir le rapport HTML (impression)</a>
+    <a class="btn btn-ghost" href="/api/certification/runs/{{ run_id }}/report.json" target="_blank">Rapport JSON</a>
+    <a class="btn btn-ghost" href="/admin/certification">Retour au tableau de bord</a>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden;border-radius:8px">
+    <iframe src="/api/certification/runs/{{ run_id }}/report"
+            style="width:100%;height:70vh;border:0;background:#fff"
+            title="Rapport certification"></iframe>
+  </div>
+</div>
+{% endblock %}

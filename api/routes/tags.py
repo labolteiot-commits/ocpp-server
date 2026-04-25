@@ -1,0 +1,255 @@
+# api/routes/tags.py
+"""
+Sprint 29 Volet A — CRUD de la whitelist idTags (table `ocpp_tags`).
+
+Comportement-clé :
+  * Tant que la table est vide, `on_authorize` retourne Accepted (retrocompat).
+  * Dès qu'au moins une ligne est insérée, la whitelist devient active :
+    tout id_tag absent sera Invalid. Attention à ajouter au moins
+    les tags utilisés par les bornes live (ADMIN, RFID cartes, etc.) AVANT
+    de déployer.
+"""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Optional
+
+import asyncio
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
+from sqlalchemy import select, func, desc
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from db.database import get_db
+from db.models import OcppTag
+from api.security import require_auth
+from core.logging import log
+
+router = APIRouter()
+
+
+# ── Schémas Pydantic ────────────────────────────────────────────────────────
+
+class TagCreate(BaseModel):
+    id_tag:        str              = Field(..., min_length=1, max_length=20)
+    parent_id_tag: Optional[str]    = Field(None, max_length=20)
+    active:        bool             = True
+    expiry_date:   Optional[str]    = None  # ISO 8601
+    max_active_tx: int              = 1
+    note:          Optional[str]    = Field(None, max_length=200)
+
+
+class TagPatch(BaseModel):
+    parent_id_tag: Optional[str] = Field(None, max_length=20)
+    active:        Optional[bool] = None
+    expiry_date:   Optional[str] = None
+    max_active_tx: Optional[int] = None
+    note:          Optional[str] = Field(None, max_length=200)
+
+
+# ── Helpers ─────────────────────────────────────────────────────────────────
+
+def _parse_expiry(s: Optional[str]) -> Optional[datetime]:
+    if not s:
+        return None
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"expiry_date invalide: {e}")
+
+
+def _tag_to_dict(tag: OcppTag) -> dict:
+    def _iso(dt):
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.isoformat()
+    return {
+        "id":            tag.id,
+        "id_tag":        tag.id_tag,
+        "parent_id_tag": tag.parent_id_tag,
+        "active":        tag.active,
+        "expiry_date":   _iso(tag.expiry_date),
+        "max_active_tx": tag.max_active_tx,
+        "note":          tag.note,
+        "created_at":    _iso(tag.created_at),
+        "updated_at":    _iso(tag.updated_at),
+        "expired":       (
+            tag.expiry_date is not None
+            and (tag.expiry_date.replace(tzinfo=timezone.utc)
+                 if tag.expiry_date.tzinfo is None else tag.expiry_date)
+                < datetime.now(timezone.utc)
+        ),
+    }
+
+
+# ── Sprint 31 Volet A — auto-sync LocalAuthList sur CRUD tag ───────────────
+
+def _trigger_local_list_sync(request: Request) -> None:
+    """Déclenche une sync LocalAuthList sur toutes les bornes connectées
+    qui supportent le profil LocalAuthListManagement.
+
+    Best-effort, non-bloquant : lance une task par borne, gère l'exception
+    silencieusement (la CRUD sur le tag ne doit pas échouer si une borne
+    est offline).
+    """
+    try:
+        server = request.app.state.ocpp_server
+    except Exception:
+        return
+    # Liste directe via connected_chargers (API publique du serveur)
+    try:
+        ids = list(server.connected_chargers)
+    except Exception:
+        ids = []
+    for charger_id in ids:
+        try:
+            cp = server.get_charger(charger_id)
+            if cp is not None and hasattr(cp, "_sync_local_auth_list"):
+                asyncio.create_task(cp._sync_local_auth_list(update_type="Full"))
+        except Exception as e:
+            log.warning("auto-sync LocalAuthList trigger failed",
+                        id=charger_id, error=str(e))
+
+
+# ── Endpoints CRUD ──────────────────────────────────────────────────────────
+
+@router.get("", dependencies=[Depends(require_auth)])
+async def list_tags(
+    active: Optional[bool] = None,
+    expired: Optional[bool] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Liste les tags. Filtres optionnels :
+      * ?active=true / ?active=false
+      * ?expired=true  → expiry_date dépassée
+      * ?expired=false → pas d'expiry ou expiry future
+    """
+    stmt = select(OcppTag).order_by(desc(OcppTag.updated_at))
+    if active is not None:
+        stmt = stmt.where(OcppTag.active == active)
+    r = await db.execute(stmt)
+    rows = r.scalars().all()
+    out = [_tag_to_dict(t) for t in rows]
+    if expired is True:
+        out = [t for t in out if t["expired"]]
+    elif expired is False:
+        out = [t for t in out if not t["expired"]]
+    return {"count": len(out), "tags": out}
+
+
+@router.post("", dependencies=[Depends(require_auth)])
+async def create_tag(
+    body: TagCreate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Crée un nouveau tag dans la whitelist. 409 si id_tag existe déjà."""
+    existing = await db.scalar(select(OcppTag).where(OcppTag.id_tag == body.id_tag))
+    if existing is not None:
+        raise HTTPException(status_code=409, detail=f"id_tag déjà présent: {body.id_tag}")
+
+    expiry_dt = _parse_expiry(body.expiry_date)
+    now = datetime.now(timezone.utc)
+    tag = OcppTag(
+        id_tag=body.id_tag,
+        parent_id_tag=body.parent_id_tag,
+        active=body.active,
+        expiry_date=expiry_dt,
+        max_active_tx=body.max_active_tx,
+        note=body.note,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(tag)
+    try:
+        await db.commit()
+        await db.refresh(tag)
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"DB insert failed: {e}")
+    # Sprint 31 Volet A — propagation auto vers bornes connectées
+    _trigger_local_list_sync(request)
+    return _tag_to_dict(tag)
+
+
+@router.get("/{id_tag}", dependencies=[Depends(require_auth)])
+async def get_tag(id_tag: str, db: AsyncSession = Depends(get_db)):
+    tag = await db.scalar(select(OcppTag).where(OcppTag.id_tag == id_tag))
+    if tag is None:
+        raise HTTPException(status_code=404, detail=f"id_tag introuvable: {id_tag}")
+    return _tag_to_dict(tag)
+
+
+@router.patch("/{id_tag}", dependencies=[Depends(require_auth)])
+async def patch_tag(
+    id_tag: str,
+    body: TagPatch,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    tag = await db.scalar(select(OcppTag).where(OcppTag.id_tag == id_tag))
+    if tag is None:
+        raise HTTPException(status_code=404, detail=f"id_tag introuvable: {id_tag}")
+
+    if body.parent_id_tag is not None:
+        tag.parent_id_tag = body.parent_id_tag or None
+    if body.active is not None:
+        tag.active = body.active
+    if body.expiry_date is not None:
+        tag.expiry_date = _parse_expiry(body.expiry_date)
+    if body.max_active_tx is not None:
+        tag.max_active_tx = body.max_active_tx
+    if body.note is not None:
+        tag.note = body.note or None
+    tag.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(tag)
+    # Sprint 31 Volet A — propagation auto vers bornes connectées
+    _trigger_local_list_sync(request)
+    return _tag_to_dict(tag)
+
+
+@router.delete("/{id_tag}", dependencies=[Depends(require_auth)])
+async def delete_tag(id_tag: str, request: Request,
+                     db: AsyncSession = Depends(get_db)):
+    """Suppression hard. Pour désactiver sans perdre l'audit, PATCH active=false."""
+    tag = await db.scalar(select(OcppTag).where(OcppTag.id_tag == id_tag))
+    if tag is None:
+        raise HTTPException(status_code=404, detail=f"id_tag introuvable: {id_tag}")
+    await db.delete(tag)
+    await db.commit()
+    # Sprint 31 Volet A — propagation auto vers bornes connectées
+    _trigger_local_list_sync(request)
+    return {"detail": f"Tag {id_tag} supprimé"}
+
+
+@router.get("/_stats/summary", dependencies=[Depends(require_auth)])
+async def tags_stats(db: AsyncSession = Depends(get_db)):
+    """Statistiques utiles pour le dashboard : total, actifs, expirés."""
+    total = await db.scalar(select(func.count()).select_from(OcppTag)) or 0
+    active = await db.scalar(
+        select(func.count()).select_from(OcppTag).where(OcppTag.active.is_(True))
+    ) or 0
+    now = datetime.now(timezone.utc)
+    r = await db.execute(
+        select(OcppTag).where(OcppTag.expiry_date.is_not(None))
+    )
+    all_with_expiry = r.scalars().all()
+    expired = sum(
+        1 for t in all_with_expiry
+        if (t.expiry_date.replace(tzinfo=timezone.utc)
+            if t.expiry_date and t.expiry_date.tzinfo is None else t.expiry_date) < now
+    )
+    return {
+        "total":     total,
+        "active":    active,
+        "inactive":  total - active,
+        "expired":   expired,
+        "whitelist_enforced": total > 0,
+    }

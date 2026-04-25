@@ -1,0 +1,307 @@
+{% extends "_admin_base.html" %}
+{% set active = 'activity' %}
+{% block title %}Activity Log — Admin OCPP{% endblock %}
+{% block content %}
+
+<h2>📜 Journal d'activité OCPP unifié</h2>
+
+<div class="card">
+  <h3>Filtres</h3>
+  <div class="filters">
+    <label>Borne
+      <select id="f_charger"><option value="">— toutes —</option></select>
+    </label>
+    <label>Direction
+      <select id="f_direction">
+        <option value="">— toutes —</option>
+        <option value="in">in (borne→serveur)</option>
+        <option value="out">out (serveur→borne)</option>
+      </select>
+    </label>
+    <label>Type
+      <select id="f_msg_type">
+        <option value="">— tous —</option>
+        <option value="2">2 — CALL</option>
+        <option value="3">3 — CALLRESULT</option>
+        <option value="4">4 — CALLERROR</option>
+      </select>
+    </label>
+    <label>Action
+      <input type="text" id="f_action" placeholder="ex: Heartbeat" style="width:160px">
+    </label>
+    <label>Transaction
+      <input type="number" id="f_tx" placeholder="tx id" style="width:90px">
+    </label>
+    <label>Recherche payload
+      <input type="text" id="f_q" placeholder="texte libre" style="width:180px">
+    </label>
+    <label>Depuis
+      <input type="datetime-local" id="f_since" style="width:200px">
+    </label>
+    <label>Limite
+      <select id="f_limit">
+        <option>50</option><option selected>100</option><option>200</option><option>500</option>
+      </select>
+    </label>
+    <button class="btn btn-primary" id="btn_apply">Appliquer</button>
+    <button class="btn btn-ghost" id="btn_reset">Reset</button>
+    <label style="margin-left:auto"><input type="checkbox" id="auto_refresh"> auto-refresh 5s</label>
+  </div>
+  <div class="muted" id="result_meta">—</div>
+</div>
+
+<div class="card">
+  <h3>Événements (les plus récents en premier)</h3>
+  <div style="overflow-x:auto">
+    <table id="tbl">
+      <thead>
+        <tr>
+          <th style="width:160px">Quand</th>
+          <th>Borne</th>
+          <th>Dir</th>
+          <th>Type</th>
+          <th>Action</th>
+          <th>Conn</th>
+          <th>Tx</th>
+          <th>Aperçu payload</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <h3>Stats globales — 24 dernières heures</h3>
+  <div id="stats_box" class="muted">Chargement…</div>
+</div>
+
+<!-- Modal détail -->
+<div id="modal_overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:center;justify-content:center;padding:1rem">
+  <div style="background:#1e293b;border:1px solid #38bdf8;border-radius:10px;max-width:920px;width:100%;max-height:90vh;overflow:auto;padding:1.25rem">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+      <h2 id="modal_title" style="margin:0">Détail événement</h2>
+      <button class="btn btn-ghost" onclick="closeModal()">Fermer ✕</button>
+    </div>
+    <div id="modal_body"></div>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+const TYPE_LABEL = {2:'CALL', 3:'CALLRESULT', 4:'CALLERROR'};
+
+async function loadChargers() {
+  try {
+    const data = await api('GET', '/api/chargers/');
+    const sel = document.getElementById('f_charger');
+    const items = Array.isArray(data) ? data : (data.items || []);
+    items.forEach(c => {
+      const o = document.createElement('option');
+      o.value = c.id; o.textContent = c.id;
+      sel.appendChild(o);
+    });
+  } catch(e) { console.error('chargers', e); }
+}
+
+function buildQuery() {
+  const params = new URLSearchParams();
+  const cid = document.getElementById('f_charger').value;
+  const dir = document.getElementById('f_direction').value;
+  const mt  = document.getElementById('f_msg_type').value;
+  const act = document.getElementById('f_action').value.trim();
+  const tx  = document.getElementById('f_tx').value;
+  const q   = document.getElementById('f_q').value.trim();
+  const sin = document.getElementById('f_since').value;
+  const lim = document.getElementById('f_limit').value;
+  if (cid) params.set('charger_id', cid);
+  if (dir) params.set('direction', dir);
+  if (mt)  params.set('msg_type', mt);
+  if (act) params.set('action', act);
+  if (tx)  params.set('transaction_id', tx);
+  if (q)   params.set('q', q);
+  if (sin) params.set('since', new Date(sin).toISOString());
+  if (lim) params.set('limit', lim);
+  return params.toString();
+}
+
+function badgeForType(t) {
+  if (t === 2) return '<span class="badge badge-blue">CALL</span>';
+  if (t === 3) return '<span class="badge badge-green">RESULT</span>';
+  if (t === 4) return '<span class="badge badge-red">ERROR</span>';
+  return '<span class="badge badge-grey">?</span>';
+}
+function badgeForDir(d) {
+  if (d === 'in')  return '<span class="badge badge-amber">in</span>';
+  if (d === 'out') return '<span class="badge badge-blue">out</span>';
+  return '<span class="badge badge-grey">?</span>';
+}
+
+function previewPayload(row) {
+  if (row.error_code) {
+    return '<span class="mono" style="color:#fca5a5">' + escapeHtml(row.error_code) +
+           ' — ' + escapeHtml((row.error_description||'').slice(0,80)) + '</span>';
+  }
+  if (!row.payload) return '<span class="muted">(vide)</span>';
+  let s;
+  try { s = JSON.stringify(row.payload); } catch(e) { s = String(row.payload); }
+  if (s.length > 90) s = s.slice(0,90) + '…';
+  return '<span class="mono">' + escapeHtml(s) + '</span>';
+}
+
+async function loadActivity() {
+  const qs = buildQuery();
+  const data = await api('GET', '/api/activity?' + qs);
+  document.getElementById('result_meta').textContent =
+    `${data.count} affichés sur ${data.total} (limite ${data.limit}, offset ${data.offset})`;
+  const tb = document.getElementById('tbody');
+  tb.innerHTML = '';
+  if (data.items.length === 0) {
+    tb.innerHTML = '<tr><td colspan="9" class="empty">Aucun événement pour ces filtres</td></tr>';
+    return;
+  }
+  for (const row of data.items) {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      `<td class="mono">${fmtDate(row.timestamp)}</td>` +
+      `<td><a href="/admin/activity?charger_id=${encodeURIComponent(row.charger_id)}" style="color:#38bdf8">${escapeHtml(row.charger_id)}</a></td>` +
+      `<td>${badgeForDir(row.direction)}</td>` +
+      `<td>${badgeForType(row.msg_type)}</td>` +
+      `<td>${row.action ? escapeHtml(row.action) : '<span class="muted">—</span>'}</td>` +
+      `<td class="muted">${row.connector_id ?? ''}</td>` +
+      `<td class="muted">${row.transaction_id ?? ''}</td>` +
+      `<td>${previewPayload(row)}</td>` +
+      `<td><button class="btn btn-ghost" data-id="${row.id}">Détail</button></td>`;
+    tr.querySelector('button').onclick = () => openDetail(row.id);
+    tb.appendChild(tr);
+  }
+}
+
+async function loadStats() {
+  try {
+    const since = new Date(Date.now() - 24*3600*1000).toISOString();
+    const data = await api('GET', '/api/activity/stats?since=' + encodeURIComponent(since));
+    let html = `<div><strong>${data.total_rows}</strong> événements totaux (24h)`;
+    if (data.oldest) html += ` &middot; depuis ${fmtDate(data.oldest)}`;
+    html += '</div><div style="display:flex;gap:2rem;flex-wrap:wrap;margin-top:.5rem">';
+    html += '<div><h3>Par borne</h3>';
+    for (const [k,v] of Object.entries(data.per_charger)) {
+      html += `<div class="mono">${escapeHtml(k)} <span class="badge badge-blue">${v}</span></div>`;
+    }
+    html += '</div>';
+    html += '<div><h3>Par action (top 10)</h3>';
+    let i = 0;
+    for (const [k,v] of Object.entries(data.per_action)) {
+      if (i++ >= 10) break;
+      html += `<div class="mono">${escapeHtml(k)} <span class="badge badge-grey">${v}</span></div>`;
+    }
+    html += '</div>';
+    html += '<div><h3>Direction</h3>';
+    for (const [k,v] of Object.entries(data.per_direction)) {
+      html += `<div class="mono">${escapeHtml(k)} <span class="badge badge-amber">${v}</span></div>`;
+    }
+    html += '</div>';
+    html += '<div><h3>Type msg</h3>';
+    for (const [k,v] of Object.entries(data.per_msg_type)) {
+      html += `<div class="mono">${TYPE_LABEL[k]||k} <span class="badge badge-grey">${v}</span></div>`;
+    }
+    html += '</div></div>';
+    document.getElementById('stats_box').innerHTML = html;
+  } catch(e) {
+    document.getElementById('stats_box').innerHTML = '<span style="color:#fca5a5">Erreur: ' + escapeHtml(e.message) + '</span>';
+  }
+}
+
+async function openDetail(id) {
+  document.getElementById('modal_overlay').style.display = 'flex';
+  document.getElementById('modal_body').innerHTML = '<div class="muted">Chargement…</div>';
+  try {
+    const data = await api('GET', '/api/activity/' + id);
+    document.getElementById('modal_title').textContent =
+      `${TYPE_LABEL[data.msg_type]||'?'} ${data.action || ''} — ${data.charger_id}`;
+    let html = `
+      <div style="display:grid;grid-template-columns:160px 1fr;gap:.4rem;font-size:.85rem;margin-bottom:1rem">
+        <div class="muted">Timestamp</div><div class="mono">${fmtDate(data.timestamp)}</div>
+        <div class="muted">Borne</div><div class="mono">${escapeHtml(data.charger_id)}</div>
+        <div class="muted">Direction</div><div>${badgeForDir(data.direction)}</div>
+        <div class="muted">Type</div><div>${badgeForType(data.msg_type)} (${data.msg_type})</div>
+        <div class="muted">Action</div><div class="mono">${escapeHtml(data.action||'-')}</div>
+        <div class="muted">Unique ID</div><div class="mono">${escapeHtml(data.unique_id||'-')}</div>
+        <div class="muted">Connector</div><div class="mono">${data.connector_id ?? '-'}</div>
+        <div class="muted">Transaction</div><div class="mono">${data.transaction_id ?? '-'}</div>`;
+    if (data.error_code) {
+      html += `<div class="muted">Erreur</div><div class="mono" style="color:#fca5a5">${escapeHtml(data.error_code)} — ${escapeHtml(data.error_description||'')}</div>`;
+    }
+    html += '</div>';
+    html += '<h3>Payload</h3>';
+    const pj = data.payload === null ? '(vide)' : JSON.stringify(data.payload, null, 2);
+    html += `<pre style="background:#0f172a;border:1px solid #334155;border-radius:6px;padding:.75rem;font-size:.78rem;overflow:auto;max-height:280px">${escapeHtml(pj)}</pre>`;
+    if (data.doc) {
+      html += `<h3 style="margin-top:1rem">📖 Documentation OCPP 1.6J — ${escapeHtml(data.doc.name)}</h3>`;
+      html += `<div class="muted">Profil <code class="inline">${escapeHtml(data.doc.profile)}</code> &middot; Direction <code class="inline">${escapeHtml(data.doc.direction_norm)}</code>`;
+      if (data.doc.section_norm) html += ` &middot; Section <code class="inline">${escapeHtml(data.doc.section_norm)}</code>`;
+      html += '</div>';
+      html += `<p style="margin:.5rem 0;font-weight:600">${escapeHtml(data.doc.summary_fr)}</p>`;
+      html += `<p style="margin-bottom:.75rem">${escapeHtml(data.doc.description_fr)}</p>`;
+      if (data.doc.triggered_by) html += `<div><strong>Déclenchement :</strong> ${escapeHtml(data.doc.triggered_by)}</div>`;
+      if (data.doc.cs_response)  html += `<div><strong>Réponse :</strong> ${escapeHtml(data.doc.cs_response)}</div>`;
+      if (data.doc.fields_fr) {
+        html += '<h3 style="margin-top:.75rem">Champs</h3><table>';
+        for (const [k,v] of Object.entries(data.doc.fields_fr)) {
+          html += `<tr><td class="mono" style="white-space:nowrap;color:#38bdf8">${escapeHtml(k)}</td><td>${escapeHtml(v)}</td></tr>`;
+        }
+        html += '</table>';
+      }
+    } else if (data.action) {
+      html += `<div class="muted" style="margin-top:.75rem">Pas de doc FR pour <code class="inline">${escapeHtml(data.action)}</code> — voir <a href="/api/message-docs" style="color:#38bdf8">/api/message-docs</a></div>`;
+    }
+    document.getElementById('modal_body').innerHTML = html;
+  } catch(e) {
+    document.getElementById('modal_body').innerHTML = '<span style="color:#fca5a5">Erreur: ' + escapeHtml(e.message) + '</span>';
+  }
+}
+function closeModal() { document.getElementById('modal_overlay').style.display = 'none'; }
+document.getElementById('modal_overlay').addEventListener('click', (e) => {
+  if (e.target.id === 'modal_overlay') closeModal();
+});
+
+// Auto-refresh
+let refreshTimer = null;
+document.getElementById('auto_refresh').addEventListener('change', (e) => {
+  if (e.target.checked) {
+    refreshTimer = setInterval(() => { loadActivity().catch(()=>{}); loadStats().catch(()=>{}); }, 5000);
+  } else if (refreshTimer) {
+    clearInterval(refreshTimer); refreshTimer = null;
+  }
+});
+
+document.getElementById('btn_apply').addEventListener('click', () => {
+  loadActivity().catch(e => showToast(e.message, true));
+});
+document.getElementById('btn_reset').addEventListener('click', () => {
+  ['f_charger','f_direction','f_msg_type','f_action','f_tx','f_q','f_since'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('f_limit').value = '100';
+  loadActivity().catch(e => showToast(e.message, true));
+});
+
+// Pré-remplir charger_id depuis query string
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.get('charger_id')) {
+  document.getElementById('f_charger').value = urlParams.get('charger_id');
+}
+
+(async () => {
+  await loadChargers();
+  // Re-set après loadChargers (au cas où)
+  if (urlParams.get('charger_id')) {
+    document.getElementById('f_charger').value = urlParams.get('charger_id');
+  }
+  await loadActivity();
+  await loadStats();
+})();
+</script>
+{% endblock %}

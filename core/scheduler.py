@@ -136,9 +136,11 @@ class ChargingScheduler:
         if plan is None:
             return
 
-        # Appliquer le courant du plan si différent de la limite actuelle
+        # Appliquer le courant du plan si différent de la dernière valeur appliquée
         target_amps = plan.required_amps
-        current_limit = cp._default_max_amps  # limite actuelle configurée
+        # BUG-7 FIX : utiliser _scheduler_applied_amps (dernière valeur poussée par
+        # le scheduler) et non _default_max_amps (limite configurée par l'opérateur).
+        current_limit = cp._scheduler_applied_amps  # None si jamais appliqué ce cycle
 
         # Recalculer si les conditions ont changé (SOC a progressé)
         if plan.departure_time:
@@ -177,42 +179,30 @@ class ChargingScheduler:
                 await db.commit()
 
     async def _apply_amps(self, cp, amps: float, reason: str = "") -> None:
-        """Applique un courant via SetChargingProfile sur la borne."""
-        if cp._is_technove:
-            profile = {
-                "charging_profile_id":      99,
-                "stack_level":              0,
-                "charging_profile_purpose": "TxDefaultProfile",
-                "charging_profile_kind":    "Absolute",
-                "charging_schedule": {
-                    "charging_rate_unit": "A",
-                    "charging_schedule_period": [
-                        {"start_period": 0, "limit": amps}
-                    ],
-                },
-            }
-            connector_id = 1
-        else:
-            profile = {
-                "charging_profile_id":      99,
-                "stack_level":              8,
-                "charging_profile_purpose": "ChargePointMaxProfile",
-                "charging_profile_kind":    "Absolute",
-                "charging_schedule": {
-                    "charging_rate_unit": "A",
-                    "charging_schedule_period": [
-                        {"start_period": 0, "limit": amps}
-                    ],
-                },
-            }
-            connector_id = 0
+        """
+        Applique un courant via set_current_limit (entièrement profile-aware).
 
+        BUG-6 FIX :
+        - Ancienne implémentation : if cp._is_technove → TxDefaultProfile/connector_1
+          sinon ChargePointMaxProfile/connector_0.
+          Problème : _is_technove est False pour Grizzl-E (use_tx_default_profile=True
+          mais profile.name != "TechnoVE"). Grizzl-E recevait ChargePointMaxProfile
+          qui est accepté mais IGNORÉ par son firmware.
+        - Nouvelle implémentation : déléguer à cp.set_current_limit() qui :
+            • Session OCPP active → TxProfile + transaction_id (effet immédiat)
+            • Pas de session → TxDefaultProfile (bornes use_tx_default_profile=True)
+                              → ChargePointMaxProfile (bornes génériques)
+          Toute la logique fabricant est centralisée dans set_current_limit.
+        """
         try:
-            status = await cp.set_charging_profile(connector_id, profile)
-            log.info("Scheduler — SetChargingProfile",
-                     charger_id=cp.id, amps=amps, status=status, reason=reason)
+            status = await cp.set_current_limit(amps)
+            # Tracker la dernière valeur appliquée (BUG-7 fix)
+            cp._scheduler_applied_amps = amps
+            log.info("Scheduler — set_current_limit",
+                     charger_id=cp.id, amps=amps, status=status, reason=reason,
+                     profile=cp.profile.name)
         except Exception as e:
-            log.warning("Scheduler — SetChargingProfile échoué",
+            log.warning("Scheduler — set_current_limit échoué",
                         charger_id=cp.id, error=str(e))
 
     async def _latest_reading(self, vehicle_id: str) -> Optional[OBD2Reading]:

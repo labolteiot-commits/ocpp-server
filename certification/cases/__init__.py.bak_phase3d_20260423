@@ -1,0 +1,19 @@
+"""Cas de tests de certification OCPP 1.6J.
+
+L'import de chaque sous-module déclenche ``catalog.register(...)``, ce
+qui peuple ``catalog.TESTS``. Ordre = ordre des suites dans
+``SUITES`` pour clarté.
+"""
+from __future__ import annotations
+
+# Les modules s'auto-enregistrent via register() dans leur corps.
+# L'ordre ici est purement cosmétique.
+from . import handshake  # noqa: F401
+from . import authorization  # noqa: F401
+from . import transaction  # noqa: F401
+from . import smart_charging  # noqa: F401
+from . import config  # noqa: F401
+from . import remote  # noqa: F401
+from . import reservation  # noqa: F401
+from . import firmware  # noqa: F401
+from . import resilience  # noqa: F401

@@ -1,0 +1,138 @@
+{% extends "_admin_base.html" %}
+{% set active = 'caps' %}
+{% block title %}Capabilities — Admin OCPP{% endblock %}
+
+{% block content %}
+<h2>Capabilities — SupportedFeatureProfiles (Sprint 32 P1)</h2>
+
+<div class="card">
+  <div class="filters">
+    <button class="btn btn-primary" id="btnRefresh">Rafraîchir</button>
+    <button class="btn btn-warn" id="btnDetectAll">Détecter toutes les bornes connectées</button>
+    <span class="muted" id="lastRefresh"></span>
+  </div>
+  <p class="muted" style="margin-top:.5rem">
+    La colonne <b>Détectés</b> correspond à <code class="inline">chargers.supported_profiles</code>.
+    Le bouton <b>Détecter</b> déclenche un <code class="inline">GetConfiguration(SupportedFeatureProfiles)</code>
+    immédiat vers la borne et persiste le résultat.
+  </p>
+</div>
+
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>Borne</th>
+        <th>Connectée</th>
+        <th>Profils détectés</th>
+        <th>Dernier boot</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="rows">
+      <tr><td colspan="5" class="empty">Chargement…</td></tr>
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const KNOWN_PROFILES = [
+  'Core',
+  'FirmwareManagement',
+  'LocalAuthListManagement',
+  'Reservation',
+  'SmartCharging',
+  'RemoteTrigger',
+];
+
+function renderProfiles(list) {
+  if (!list || list.length === 0) {
+    return '<span class="badge badge-grey">non-détecté</span>';
+  }
+  return list.map(p => {
+    const known = KNOWN_PROFILES.includes(p);
+    const cls = known ? 'badge-green' : 'badge-amber';
+    return `<span class="badge ${cls}" style="margin-right:3px">${escapeHtml(p)}</span>`;
+  }).join(' ');
+}
+
+async function loadRows() {
+  const tbody = document.getElementById('rows');
+  tbody.innerHTML = '<tr><td colspan="5" class="empty">Chargement…</td></tr>';
+  try {
+    const chargers = await api('GET', '/api/chargers/');
+    if (!chargers || chargers.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="empty">Aucune borne enregistrée.</td></tr>';
+      return;
+    }
+    const rows = [];
+    for (const c of chargers) {
+      let caps = null;
+      try {
+        caps = await api('GET', `/api/commands/capabilities/${encodeURIComponent(c.id)}`);
+      } catch(e) {
+        caps = { supported_profiles: [], detected: false };
+      }
+      const connected = c.status && c.status !== 'Offline';
+      const connBadge = connected
+        ? '<span class="badge badge-green">oui</span>'
+        : '<span class="badge badge-grey">non</span>';
+      rows.push(`
+        <tr>
+          <td><b>${escapeHtml(c.id)}</b><br><span class="muted">${escapeHtml(c.vendor || '')} ${escapeHtml(c.model || '')}</span></td>
+          <td>${connBadge}<br><span class="muted mono">${escapeHtml(c.status || '-')}</span></td>
+          <td>${renderProfiles(caps.supported_profiles)}</td>
+          <td class="muted mono">${fmtDate(c.last_boot_at || c.last_seen)}</td>
+          <td class="actions-cell">
+            <button class="btn btn-primary" data-cid="${escapeHtml(c.id)}" onclick="detectOne(this)" ${connected ? '' : 'disabled title="Borne offline"'}>Détecter</button>
+          </td>
+        </tr>`);
+    }
+    tbody.innerHTML = rows.join('');
+    document.getElementById('lastRefresh').textContent =
+      'Dernier refresh : ' + new Date().toLocaleTimeString('fr-CA');
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="5" class="empty">Erreur : ${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+async function detectOne(btn) {
+  const cid = btn.dataset.cid;
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    const r = await api('POST', `/api/commands/detect-capabilities/${encodeURIComponent(cid)}`);
+    showToast(`${cid} → ${(r.supported_profiles || []).join(', ')}`);
+    await loadRows();
+  } catch(e) {
+    showToast(`${cid} : ${e.message}`, true);
+    btn.disabled = false;
+    btn.textContent = 'Détecter';
+  }
+}
+
+async function detectAll() {
+  const btn = document.getElementById('btnDetectAll');
+  btn.disabled = true;
+  btn.textContent = 'Détection en cours…';
+  try {
+    const r = await api('POST', '/api/commands/detect-capabilities');
+    const ok = r.results.filter(x => x.ok).length;
+    showToast(`Détection : ${ok}/${r.count} succès`);
+    await loadRows();
+  } catch(e) {
+    showToast(e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Détecter toutes les bornes connectées';
+  }
+}
+
+document.getElementById('btnRefresh').onclick = loadRows;
+document.getElementById('btnDetectAll').onclick = detectAll;
+loadRows();
+</script>
+{% endblock %}

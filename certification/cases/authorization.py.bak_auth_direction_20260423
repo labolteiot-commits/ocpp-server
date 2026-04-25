@@ -1,0 +1,162 @@
+"""Tests Authorize / LocalAuthList (§4.1, §6.9, §6.11)."""
+from __future__ import annotations
+
+import asyncio
+from datetime import datetime, timezone
+
+from certification import catalog
+from certification.catalog import TestCase, TestResult
+from certification.helpers import TestContext
+
+
+CERTIF_TAG_VALID = "CERTIF_VALID"
+CERTIF_TAG_REJECTED = "CERTIF_BLOCKED"
+
+
+async def _run_authorize_valid(ctx: TestContext) -> TestResult:
+    await ctx.ensure_tag(CERTIF_TAG_VALID, active=True, note="certif valid")
+    cp = ctx.get_cp()
+    if cp is None:
+        return TestResult(status="failed", message="Borne hors ligne")
+    try:
+        from ocpp.v16 import call as v16call
+        result = await cp.call(v16call.Authorize(id_tag=CERTIF_TAG_VALID))
+    except Exception as e:
+        return TestResult(
+            status="failed",
+            message=f"Authorize a levé une exception : {e}",
+            recommendation="Vérifier que la borne accepte les requêtes Authorize côté serveur.",
+        )
+    status = None
+    try:
+        status = result.id_tag_info.status
+    except AttributeError:
+        try:
+            status = result.id_tag_info["status"]
+        except Exception:
+            pass
+    details = {"status": status}
+    if str(status).lower() == "accepted":
+        return TestResult(
+            status="passed",
+            message=f"Authorize accepté pour {CERTIF_TAG_VALID}",
+            details=details,
+        )
+    return TestResult(
+        status="failed",
+        message=f"Authorize status inattendu : {status}",
+        details=details,
+        recommendation=f"Vérifier la whitelist serveur : le tag {CERTIF_TAG_VALID} doit être actif.",
+    )
+
+
+catalog.register(
+    TestCase(
+        name="auth.authorize_valid",
+        category="Authorization",
+        title="Authorize tag valide (§4.1)",
+        description=f"Ajoute le tag {CERTIF_TAG_VALID} et vérifie qu'Authorize retourne Accepted.",
+        run=_run_authorize_valid,
+        estimated_seconds=8,
+        suites={"standard", "full"},
+        ocpp_ref="§4.1 Authorize.req",
+    )
+)
+
+
+# ─────────────────────────── auth.authorize_rejected ───────────────────────────
+
+
+async def _run_authorize_rejected(ctx: TestContext) -> TestResult:
+    await ctx.ensure_tag(CERTIF_TAG_REJECTED, active=False, note="certif blocked")
+    cp = ctx.get_cp()
+    if cp is None:
+        return TestResult(status="failed", message="Borne hors ligne")
+    try:
+        from ocpp.v16 import call as v16call
+        result = await cp.call(v16call.Authorize(id_tag=CERTIF_TAG_REJECTED))
+    except Exception as e:
+        return TestResult(status="failed", message=f"Authorize a levé une exception : {e}")
+    status = None
+    try:
+        status = result.id_tag_info.status
+    except AttributeError:
+        try:
+            status = result.id_tag_info["status"]
+        except Exception:
+            pass
+    details = {"status": status}
+    if str(status).lower() in {"blocked", "invalid", "expired"}:
+        return TestResult(
+            status="passed",
+            message=f"Authorize refusé comme attendu (status={status})",
+            details=details,
+        )
+    return TestResult(
+        status="failed",
+        message=f"Tag inactif mais Authorize status={status} — devrait être Blocked/Invalid",
+        details=details,
+        recommendation="Vérifier que la whitelist serveur bloque bien les tags inactifs (§4.1 IdTagInfo).",
+    )
+
+
+catalog.register(
+    TestCase(
+        name="auth.authorize_rejected",
+        category="Authorization",
+        title="Authorize tag bloqué (§4.1)",
+        description=f"Vérifie qu'un tag inactif ({CERTIF_TAG_REJECTED}) retourne Blocked ou Invalid.",
+        run=_run_authorize_rejected,
+        estimated_seconds=6,
+        suites={"standard", "full"},
+        ocpp_ref="§4.1 Authorize.conf",
+    )
+)
+
+
+# ─────────────────────────── auth.local_list_sync ───────────────────────────
+
+
+async def _run_local_list_sync(ctx: TestContext) -> TestResult:
+    if not ctx.supports("LocalAuthListManagement"):
+        return TestResult(
+            status="skipped",
+            message="Profil LocalAuthListManagement non supporté par la borne",
+        )
+    cp = ctx.get_cp()
+    try:
+        version = await cp.get_local_list_version()
+    except Exception as e:
+        return TestResult(
+            status="failed",
+            message=f"GetLocalListVersion a levé une exception : {e}",
+            recommendation="Vérifier l'implémentation §6.11 côté borne.",
+        )
+    details = {"current_version": version}
+    if version is None:
+        return TestResult(
+            status="failed",
+            message="GetLocalListVersion n'a retourné aucune version",
+            details=details,
+            recommendation="Le profil LocalAuthListManagement déclaré mais endpoint KO.",
+        )
+    return TestResult(
+        status="passed",
+        message=f"GetLocalListVersion a retourné version={version}",
+        details=details,
+    )
+
+
+catalog.register(
+    TestCase(
+        name="auth.local_list_sync",
+        category="Authorization",
+        title="GetLocalListVersion (§6.11)",
+        description="Vérifie que la borne répond à GetLocalListVersion (cache local).",
+        run=_run_local_list_sync,
+        requires_profile="LocalAuthListManagement",
+        estimated_seconds=8,
+        suites={"full"},
+        ocpp_ref="§6.11 GetLocalListVersion",
+    )
+)
