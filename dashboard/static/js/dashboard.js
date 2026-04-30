@@ -177,7 +177,7 @@ async function loadStats(id) {
       const txEl = document.getElementById(`tx-${id}`);
       if (txEl) { txEl.textContent = `Session active — Transaction #${d.active_transaction_id}`; txEl.className = 'tx-info active'; }
     }
-  } catch(e) {}
+  } catch (e) { console.warn("[OCPP refresh]", e); }
 }
 document.querySelectorAll('.charger-card').forEach(c => {
   const id = c.id.replace('card-','');
@@ -189,6 +189,85 @@ document.querySelectorAll('.charger-card').forEach(c => {
 setInterval(() => {
   document.querySelectorAll('.charger-card').forEach(c => loadStats(c.id.replace('card-','')));
 }, 30000);
+
+// ═══════════════════════════════════════════════════════
+// Poll live (filet de sécurité quand un broadcast WS est manqué)
+// Reconcilie l'état Connecté / Offline + badge + heartbeat sans
+// recharger la page. Détecte aussi les nouvelles bornes (reload).
+// ═══════════════════════════════════════════════════════
+let _knownIds = new Set(
+  Array.from(document.querySelectorAll('.charger-card')).map(c => c.id.replace('card-',''))
+);
+// Tolerance heartbeat fallback : si une borne a un heartbeat recent (< 90s)
+// mais n'est pas dans le set 'connected' in-memory du serveur (race condition
+// reconnexion WS apres broadcast manque), on l'affiche live quand meme.
+// Evite l'affichage 'Offline' transitoire qui inquietait l'usager.
+const HEARTBEAT_LIVE_TOLERANCE_MS = 90 * 1000;
+function _heartbeatRecent(isoTs) {
+  if (!isoTs) return false;
+  const t = Date.parse(isoTs);
+  if (Number.isNaN(t)) return false;
+  return (Date.now() - t) < HEARTBEAT_LIVE_TOLERANCE_MS;
+}
+
+async function refreshLiveState() { // refreshLiveState_patched
+  try {
+    const r = await fetch('/api/chargers/_live', { cache: 'no-store' });
+    if (!r.ok) {
+      console.warn('[dashboard] /_live HTTP', r.status);
+      return;
+    }
+    const d = await r.json();
+    const liveSet = new Set(d.connected || []);
+
+    // Détecter une nouvelle borne enregistrée → reload pour afficher la carte
+    const dbIds = new Set((d.chargers || []).map(c => c.id));
+    for (const id of dbIds) {
+      if (!_knownIds.has(id)) { location.reload(); return; }
+    }
+
+    // Compteur KPI = WS connectes + heartbeat recent (fallback anti-race).
+    let liveCount = liveSet.size;
+    (d.chargers || []).forEach(c => {
+      if (!liveSet.has(c.id) && _heartbeatRecent(c.last_heartbeat)) liveCount++;
+    });
+    const sc = document.getElementById('s-conn');
+    if (sc) sc.textContent = liveCount;
+
+    // Reconciliation par carte
+    (d.chargers || []).forEach(c => {
+      const card = document.getElementById(`card-${c.id}`);
+      if (!card) return;
+      // isLive = WS active OU heartbeat recent (filet anti-race reconnect).
+      const isLive = liveSet.has(c.id) || _heartbeatRecent(c.last_heartbeat);
+      setConnected(c.id, isLive);
+      const badge = document.getElementById(`status-${c.id}`);
+      if (badge) {
+        const txt = isLive ? c.status : 'Offline';
+        if (badge.textContent !== txt) {
+          badge.textContent = txt;
+          badge.className = `badge b-${txt.toLowerCase()}`;
+        }
+      }
+      if (c.last_heartbeat) {
+        const hb = document.getElementById(`hb-${c.id}`);
+        if (hb) {
+          const t = new Date(c.last_heartbeat).toLocaleTimeString('fr-CA');
+          hb.textContent = `Heartbeat : ${t}`;
+        }
+      }
+    });
+  } catch (e) {
+    // Plus de catch silencieux : on log pour diagnostiquer si setInterval
+    // s'interrompt sur une exception (cause probable de l'affichage fige).
+    console.error('[dashboard] refreshLiveState exception:', e);
+  }
+}
+refreshLiveState();
+setInterval(async () => {
+  try { await refreshLiveState(); }
+  catch (err) { console.warn("[OCPP refresh interval]", err); }
+}, 5000);
 
 // ═══════════════════════════════════════════════════════
 // Helpers API
