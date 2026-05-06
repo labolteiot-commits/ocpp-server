@@ -30,6 +30,19 @@
     <input type="text" id="notes" placeholder="Contexte, numéro de série, etc.">
   </div>
   <div class="form-row">
+    <label for="step_mode">Mode</label>
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center">
+      <label style="display:flex;gap:.4rem;align-items:center;cursor:pointer">
+        <input type="radio" name="run_mode" value="auto" checked>
+        <span>Auto &mdash; déroule complètement, prompts plug/unplug seulement</span>
+      </label>
+      <label style="display:flex;gap:.4rem;align-items:center;cursor:pointer">
+        <input type="radio" name="run_mode" value="step">
+        <span>Pas-à-pas &mdash; chaque étape expliquée + bouton « Suivant »</span>
+      </label>
+    </div>
+  </div>
+  <div class="form-row">
     <label></label>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap">
       <button class="btn btn-primary" onclick="startRun()">&#9654;&nbsp; Lancer la certification</button>
@@ -47,8 +60,8 @@
   <div class="form-row"><label>Statut</label><span id="run_status_view"></span></div>
   <div class="form-row"><label>Progression</label>
     <div style="width:100%">
-      <div style="background:#0f172a;border:1px solid #334155;border-radius:6px;height:14px;overflow:hidden">
-        <div id="run_progress_bar" style="background:#38bdf8;height:100%;width:0%;transition:width .3s"></div>
+      <div style="background:var(--bg-base, #0f172a);border:1px solid var(--border-subtle, #334155);border-radius:6px;height:14px;overflow:hidden">
+        <div id="run_progress_bar" style="background:var(--color-hq-blue-light, #38bdf8);height:100%;width:0%;transition:width .3s"></div>
       </div>
       <div class="muted" id="run_progress_text" style="margin-top:4px">0 / 0</div>
     </div>
@@ -72,6 +85,41 @@
     <button class="btn btn-danger" onclick="cancelRun()">Annuler le run</button>
     <a class="btn btn-success" id="report_link" href="#" target="_blank" style="display:none">Voir rapport HTML</a>
     <a class="btn btn-ghost" id="report_json_link" href="#" target="_blank" style="display:none">Rapport JSON</a>
+  </div>
+</div>
+
+<!-- Phase 2 step-by-step : panneau étape courante + stream OCPP live -->
+<div class="card" id="step_card" style="display:none">
+  <h2>&#129534;&nbsp; Étape courante</h2>
+  <div class="form-row">
+    <label>Test</label>
+    <span id="step_test_name" class="mono">&mdash;</span>
+  </div>
+  <div class="form-row">
+    <label>Étape</label>
+    <span id="step_name" class="mono" style="color:var(--color-hq-blue-light, #38bdf8);font-weight:700">&mdash;</span>
+    <span id="step_chrono" class="muted" style="margin-left:.6rem">&mdash;</span>
+  </div>
+  <div class="form-row">
+    <label>Description</label>
+    <span id="step_description">&mdash;</span>
+  </div>
+  <div class="form-row">
+    <label>Détail OCPP</label>
+    <span id="step_action_hint" class="muted" style="white-space:pre-wrap">&mdash;</span>
+  </div>
+  <div id="step_pending_actions" style="display:none;margin-top:.5rem;padding:.75rem;background:rgba(56,189,248,.08);border:1px solid #38bdf8;border-radius:8px">
+    <div style="margin-bottom:.5rem">&#9889;&nbsp; <strong>En attente de votre action</strong></div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="resolveStep('Suivant')">&#9654;&nbsp; Suivant</button>
+      <button class="btn btn-ghost" onclick="resolveStep('Sauter')">Sauter étape</button>
+      <button class="btn btn-danger" onclick="resolveStep('Annuler')">Annuler test</button>
+    </div>
+  </div>
+
+  <h3 style="margin-top:1.25rem">Comm OCPP en direct (depuis début étape)</h3>
+  <div id="ocpp_live_stream" style="max-height:280px;overflow-y:auto;background:var(--bg-base, #0f172a);border:1px solid var(--border-subtle, #334155);border-radius:6px;padding:.5rem;font-family:monospace;font-size:.78rem">
+    <div class="muted">Aucune communication encore.</div>
   </div>
 </div>
 
@@ -118,6 +166,13 @@ let ws = null;
 let currentPrompt = null;
 let promptTimer = null;
 let allTests = [];
+// Phase 2 step-by-step
+let currentStep = null;          // {step_id, name, description, action_hint, t_start, prompt_id?}
+let currentStepStartMs = null;   // monotonic start in ms
+let stepChronoTimer = null;      // setInterval for step_chrono refresh
+let activityPollTimer = null;    // setInterval for OCPP activity polling
+let lastActivityId = 0;          // dedupe id seen
+let currentTestName = null;
 
 async function loadChargers() {
   const sel = document.getElementById('charger_id');
@@ -187,10 +242,13 @@ async function startRun() {
   if (!charger_id) { showToast('Sélectionne une borne', true); return; }
 
   try {
+    // Phase 2 : récupère le mode (auto vs step-by-step) depuis le radio
+    const stepMode = (document.querySelector('input[name="run_mode"]:checked') || {}).value === 'step';
     const r = await api('POST', '/api/certification/runs', {
       charger_id, suite,
       technician_name: technician_name || null,
       notes: notes || null,
+      options: { step_mode: stepMode },
     });
     currentRunId = r.run_id;
     document.getElementById('run_id_view').textContent = r.run_id;
@@ -240,6 +298,12 @@ function handleEvent(msg) {
   }
   if (type === 'test_started') {
     appendRow({ name: msg.name, category: msg.category, status: 'running', message: '', duration_s: null });
+    // Phase 2 : retient le test courant pour le panneau étape
+    currentTestName = msg.name;
+    document.getElementById('step_test_name').textContent = msg.name;
+    document.getElementById('step_card').style.display = 'block';
+    clearStepView();
+    clearActivityStream();
   }
   if (type === 'test_passed' || type === 'test_failed' || type === 'test_skipped') {
     updateRow(msg.name, {
@@ -247,6 +311,20 @@ function handleEvent(msg) {
       message: msg.message || '',
       duration_s: msg.duration_s || null,
     });
+    // Phase 2 : nettoie l'affichage de l'étape (test fini)
+    clearStepView();
+    stopActivityPoll();
+  }
+  // Phase 2 step-by-step events
+  if (type === 'step_started') {
+    showStep(msg, /*pending=*/false);
+    startActivityPoll(msg.t_start);
+  }
+  if (type === 'step_pending') {
+    showStep(msg, /*pending=*/true);
+  }
+  if (type === 'step_resolved') {
+    document.getElementById('step_pending_actions').style.display = 'none';
   }
   if (type === 'run_finished') {
     document.getElementById('run_status_view').innerHTML =
@@ -347,6 +425,108 @@ async function cancelRun() {
     showToast('Annulation demandée');
   } catch(e) {
     showToast('Annulation : ' + e.message, true);
+  }
+}
+
+// ─────────── Phase 2 step-by-step UI helpers ───────────
+
+function showStep(msg, pending) {
+  currentStep = msg;
+  currentStepStartMs = Date.now();
+  document.getElementById('step_name').textContent = msg.name || '?';
+  document.getElementById('step_description').textContent = msg.description || '';
+  document.getElementById('step_action_hint').textContent = msg.action_hint || '';
+  document.getElementById('step_pending_actions').style.display = pending ? 'block' : 'none';
+  if (stepChronoTimer) clearInterval(stepChronoTimer);
+  document.getElementById('step_chrono').textContent = '0.0s';
+  stepChronoTimer = setInterval(() => {
+    if (!currentStepStartMs) return;
+    const dt = (Date.now() - currentStepStartMs) / 1000;
+    document.getElementById('step_chrono').textContent = dt.toFixed(1) + 's';
+  }, 100);
+}
+
+function clearStepView() {
+  currentStep = null;
+  currentStepStartMs = null;
+  if (stepChronoTimer) { clearInterval(stepChronoTimer); stepChronoTimer = null; }
+  document.getElementById('step_name').textContent = '—';
+  document.getElementById('step_description').textContent = '—';
+  document.getElementById('step_action_hint').textContent = '—';
+  document.getElementById('step_chrono').textContent = '—';
+  document.getElementById('step_pending_actions').style.display = 'none';
+}
+
+async function resolveStep(label) {
+  if (!currentStep || !currentRunId) return;
+  const promptId = currentStep.prompt_id;
+  if (!promptId) {
+    showToast('Étape sans prompt actif', true);
+    return;
+  }
+  try {
+    await api('POST', `/api/certification/runs/${currentRunId}/prompt`, {
+      prompt_id: promptId,
+      response: label,
+    });
+    document.getElementById('step_pending_actions').style.display = 'none';
+  } catch(e) {
+    showToast('Réponse étape : ' + e.message, true);
+  }
+}
+
+// ─────────── Stream OCPP live ───────────
+
+function clearActivityStream() {
+  lastActivityId = 0;
+  const box = document.getElementById('ocpp_live_stream');
+  box.innerHTML = '<div class="muted">Aucune communication encore.</div>';
+}
+
+function startActivityPoll(stepStartIso) {
+  stopActivityPoll();
+  if (!currentRunId) return;
+  // since paramètre = début de l'étape pour ne montrer que les comm pertinentes
+  const since = stepStartIso || new Date().toISOString();
+  // Premier poll immédiat puis toutes les 1.2s
+  pollActivity(since);
+  activityPollTimer = setInterval(() => pollActivity(since), 1200);
+}
+
+function stopActivityPoll() {
+  if (activityPollTimer) { clearInterval(activityPollTimer); activityPollTimer = null; }
+}
+
+async function pollActivity(since) {
+  if (!currentRunId) return;
+  try {
+    const r = await api('GET',
+      `/api/certification/runs/${currentRunId}/activity?since=${encodeURIComponent(since)}&limit=50`);
+    const items = r.items || [];
+    if (!items.length) return;
+    const box = document.getElementById('ocpp_live_stream');
+    if (lastActivityId === 0 && items.length > 0) {
+      box.innerHTML = '';   // first batch — flush placeholder
+    }
+    // items est trié DESC (récent → vieux), on remet en chrono pour append au bottom
+    items.slice().reverse().forEach(it => {
+      if (it.id <= lastActivityId) return;
+      lastActivityId = it.id;
+      const arrow = it.direction === 'in' ? '←' : (it.direction === 'out' ? '→' : '·');
+      const colour = it.direction === 'in' ? '#34d399' : (it.direction === 'out' ? '#38bdf8' : '#94a3b8');
+      const ts = (it.timestamp || '').slice(11, 19);
+      const div = document.createElement('div');
+      div.style.cssText = 'padding:2px 4px;border-bottom:1px solid #1e293b';
+      div.innerHTML = `<span style="color:var(--text-tertiary, #475569)">${ts}</span> ` +
+                      `<span style="color:${colour};font-weight:700;display:inline-block;width:1.2em">${arrow}</span> ` +
+                      `<span style="color:var(--text-primary, #e2e8f0)">${escapeHtml(it.action || '?')}</span> ` +
+                      `<span style="color:var(--text-tertiary, #64748b);font-size:.72rem">${escapeHtml((it.payload || '').slice(0, 100))}</span>`;
+      box.appendChild(div);
+    });
+    // Auto-scroll bottom
+    box.scrollTop = box.scrollHeight;
+  } catch(e) {
+    // silently ignore polling errors (run terminé, etc.)
   }
 }
 
