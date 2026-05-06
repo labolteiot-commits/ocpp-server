@@ -44,11 +44,16 @@ async def test_3ph_power_sum_and_voltage(api, sim, db, clean_sim_state,
     )
 
     # (1.5) P2-9 fix (2026-05-06) : depuis §40 B2, le serveur envoie un
-    # TxDefaultProfile 0.1A bloquant à Preparing pour empêcher la charge
-    # avant le RemoteStart manuel. Sans override, le sim charge à
-    # 0.1A * 208V * sqrt(3) * 3 ≈ 41W → fail assertion >1000W.
-    # On push un TxProfile (transactionId requis post §41 MAJ-04) avec
-    # limite haute pour libérer la charge réelle.
+    # TxDefaultProfile 0.1A bloquant (stackLevel=8) à Preparing pour
+    # empêcher la charge avant le RemoteStart manuel. Sans override,
+    # le sim charge à 0.1A * 208V * sqrt(3) * 3 ≈ 41W → fail assertion
+    # >1000W. Le helper set_charging_profile pousse un nouveau profile
+    # avec stackLevel par défaut (0 ou 1) qui PERD contre le bloc 8.
+    # Solution : clear d'abord tous les profils sur connecteur 1 (incl.
+    # le bloc), PUIS push le profile haut. Idempotent — si pas de bloc
+    # actif (ex: sim isolé), le clear est no-op.
+    await api.clear_charging_profile(charger_id, connector_id=1)
+    await asyncio.sleep(1)
     await api.set_charging_profile(charger_id, max_amps=32.0,
                                    connector_id=1, duration_seconds=600)
     await asyncio.sleep(2)
