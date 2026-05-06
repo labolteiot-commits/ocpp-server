@@ -43,6 +43,16 @@ async def test_3ph_power_sum_and_voltage(api, sim, db, clean_sim_state,
         timeout=15, message="Session pas persistée",
     )
 
+    # (1.5) P2-9 fix (2026-05-06) : depuis §40 B2, le serveur envoie un
+    # TxDefaultProfile 0.1A bloquant à Preparing pour empêcher la charge
+    # avant le RemoteStart manuel. Sans override, le sim charge à
+    # 0.1A * 208V * sqrt(3) * 3 ≈ 41W → fail assertion >1000W.
+    # On push un TxProfile (transactionId requis post §41 MAJ-04) avec
+    # limite haute pour libérer la charge réelle.
+    await api.set_charging_profile(charger_id, max_amps=32.0,
+                                   connector_id=1, duration_seconds=600)
+    await asyncio.sleep(2)
+
     # (2) Attendre ≥ 2 MeterValues periodic (60s interval défaut) —
     # speed=600 n'accélère pas l'horloge serveur, donc 2 MV = ~120s.
     # On accepte 1 si timeout, moyennant warning.
